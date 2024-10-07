@@ -17,6 +17,8 @@ from coral.breakpoint_graph import BreakpointGraph
 from coral.constants import CHR_TAG_TO_IDX
 from coral.path_constraints import longest_path_dict
 
+logger = logging.getLogger(__name__)
+
 
 def minimize_cycles(
     amplicon_id: int,
@@ -59,10 +61,8 @@ def minimize_cycles(
             (8) List of the corresponding CN of the above paths
             (9) Subpath constraints (indices) satisfied by each path
     """
-    logging.debug(
-        "#TIME "
-        + "%.4f\t" % (time.time() - state_provider.TSTART)
-        + "Regular cycle decomposition with at most %d cycles/paths allowed." % k,
+    logger.debug(
+        "Regular cycle decomposition with at most %d cycles/paths allowed." % k,
     )
     lseg = len(bp_graph.sequence_edges)
     lc = len(bp_graph.concordant_edges)
@@ -71,10 +71,10 @@ def minimize_cycles(
     nnodes = len(bp_graph.nodes)
     nedges = lseg + lc + ld + 2 * lsrc + 2 * len(bp_graph.endnodes)
     endnode_list = [node for node in bp_graph.endnodes.keys()]
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tNum nodes to be used in QP = %d." % nnodes,
     )
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tNum edges to be used in QP = %d." % nedges,
     )
 
@@ -417,25 +417,25 @@ def minimize_cycles(
         GRB.Param.TimeLimit,
         max(time_limit, ld * 300),
     )  # each breakpoint edge is assigned 5 minutes
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tCompleted gurobi model setup.",
     )
     lp_fn = model_prefix + "/amplicon" + str(amplicon_id) + "_model.lp"
     m.write(lp_fn)
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tWrote model to file: %s." % lp_fn,
     )
     log_fn = lp_fn[:-2] + "log"
     m.setParam(GRB.Param.LogFile, log_fn)
     m.optimize()
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "\tCompleted optimization with status %d." % m.Status,
     )
 
     if m.Status == GRB.INFEASIBLE or m.SolCount == 0:
-        logging.debug(
+        logger.debug(
             "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tModel is infeasible.",
         )
         return GRB.INFEASIBLE, 0.0, 0, [[], []], [[], []], [[], []]
@@ -451,7 +451,7 @@ def minimize_cycles(
     total_weights_included = 0.0
     for i in range(k):
         if sol_z[i] >= 0.9:
-            logging.debug(
+            logger.debug(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\tCycle/Path %d exists; CN = %f." % (i, sol_w[i]),
@@ -512,12 +512,12 @@ def minimize_cycles(
                         elif xi_ < lseg + lc + ld:
                             cycle[("d", xi_ - lseg - lc)] = x_xi
                         else:
-                            logging.debug(
+                            logger.debug(
                                 "#TIME "
                                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                                 + "\tError: Cyclic path cannot connect to source nodes.",
                             )
-                            logging.debug(
+                            logger.debug(
                                 "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tAborted.",
                             )
                             os.abort()
@@ -531,12 +531,12 @@ def minimize_cycles(
                     path_constraints_satisfied_set |= set(path_constraints_s)
             for seqi in range(lseg):
                 total_weights_included += sol_x[seqi * k + i] * sol_w[i] * bp_graph.sequence_edges[seqi][-2]
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "Total length weighted CN from cycles/paths = %f/%f." % (total_weights_included, total_weights),
     )
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "Total num subpath constraints satisfied = %d/%d." % (len(path_constraints_satisfied_set), len(pc_list)),
@@ -588,14 +588,14 @@ def minimize_cycles_post(
             (8) List of the corresponding CN of the above paths
             (9) Subpath constraints (indices) satisfied by each path
     """
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "Cycle decomposition with initial solution from the greedy strategy.",
     )
 
     k = len(init_sol[0][0]) + len(init_sol[0][1])
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tReset k (num cycles) to %d." % k,
     )
     p_path_constraints = 0.0
@@ -606,13 +606,13 @@ def minimize_cycles_post(
                 path_constraint_indices_.append(pathi)
     if len(pc_list) > 0:
         p_path_constraints = len(path_constraint_indices_) * 0.9999 / len(pc_list)
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tRequired proportion of subpath constraints to be satisfied: %f." % p_path_constraints,
         )
     else:
-        logging.debug(
+        logger.debug(
             "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tProceed without subpath constraints.",
         )
 
@@ -623,10 +623,10 @@ def minimize_cycles_post(
     nnodes = len(g.nodes)
     nedges = lseg + lc + ld + 2 * lsrc + 2 * len(g.endnodes)
     endnode_list = [node for node in g.endnodes.keys()]
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tNum nodes to be used in QP = %d." % nnodes,
     )
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tNum edges to be used in QP = %d." % nedges,
     )
 
@@ -1032,25 +1032,25 @@ def minimize_cycles_post(
         GRB.Param.TimeLimit,
         max(time_limit, ld * 300),
     )  # each breakpoint edge is assigned 5 minutes
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tCompleted gurobi model setup.",
     )
     lp_fn = model_prefix + "_amplicon" + str(amplicon_id) + "_postprocessing_model.lp"
     m.write(lp_fn)
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tWrote model to file: %s." % lp_fn,
     )
     log_fn = lp_fn[:-2] + "log"
     m.setParam(GRB.Param.LogFile, log_fn)
     m.optimize()
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "\tCompleted optimization with status %d." % m.Status,
     )
 
     if m.Status == GRB.INFEASIBLE or m.SolCount == 0:
-        logging.debug(
+        logger.debug(
             "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tModel is infeasible.",
         )
         return GRB.INFEASIBLE, 0.0, 0, [[], []], [[], []], [[], []]
@@ -1066,7 +1066,7 @@ def minimize_cycles_post(
     total_weights_included = 0.0
     for i in range(k):
         if sol_z[i] >= 0.9:
-            logging.debug(
+            logger.debug(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\tCycle/Path %d exists; CN = %f." % (i, sol_w[i]),
@@ -1126,12 +1126,12 @@ def minimize_cycles_post(
                         elif xi_ < lseg + lc + ld:
                             cycle[("d", xi_ - lseg - lc)] = x_xi
                         else:
-                            logging.debug(
+                            logger.debug(
                                 "#TIME "
                                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                                 + "\tError: Cyclic path cannot connect to source nodes.",
                             )
-                            logging.debug(
+                            logger.debug(
                                 "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tAborted.",
                             )
                             os.abort()
@@ -1144,12 +1144,12 @@ def minimize_cycles_post(
                 path_constraints_satisfied_set |= set(path_constraints_s)
             for seqi in range(lseg):
                 total_weights_included += sol_x[seqi * k + i] * sol_w[i] * g.sequence_edges[seqi][-2]
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "Total length weighted CN from cycles/paths = %f/%f." % (total_weights_included, total_weights),
     )
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "Total num subpath constraints satisfied = %d/%d." % (len(path_constraints_satisfied_set), len(pc_list)),
@@ -1212,7 +1212,7 @@ def maximize_weights_greedy(
             (7) List of the corresponding CN of the above paths
             (8) Subpath constraints (indices) satisfied by each path
     """
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "Integer program too large, perform greedy cycle decomposition.",
@@ -1224,10 +1224,10 @@ def maximize_weights_greedy(
     nnodes = len(g.nodes)
     nedges = lseg + lc + ld + 2 * lsrc + 2 * len(g.endnodes)
     endnode_list = [node for node in g.endnodes.keys()]
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tNum nodes to be used in QP = %d." % nnodes,
     )
-    logging.debug(
+    logger.debug(
         "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tNum edges to be used in QP = %d." % nedges,
     )
 
@@ -1249,7 +1249,7 @@ def maximize_weights_greedy(
     cycles = [[], []]  # cycles, paths
     cycle_weights = [[], []]  # cycles, paths
     path_constraints_satisfied = [[], []]  # cycles, paths
-    logging.debug(
+    logger.debug(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "\tGreedy cycle decomposition with length weighted CN = %f and num subpath constraints = %d."
@@ -1263,20 +1263,20 @@ def maximize_weights_greedy(
         pp = 1.0
         if alpha > 0 and num_unsatisfied_pc > 0:
             pp = alpha * remaining_weights / num_unsatisfied_pc  # multi - objective optimization parameter
-        logging.debug(
+        logger.debug(
             "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tIteration %d." % (cycle_id + 1),
         )
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tRemaining length weighted CN: %f/%f." % (remaining_weights, total_weights),
         )
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tRemaining subpath constraints to be satisfied: %d/%d." % (num_unsatisfied_pc, len(pc_list)),
         )
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tMultiplication factor for subpath constraints: %f." % pp,
@@ -1356,7 +1356,8 @@ def maximize_weights_greedy(
             m.addQConstr(w[0] * x[lseg + lc + di] <= remaining_CN[("d", di)])
             if g.discordant_edges[di][-1] < resolution:
                 m.addConstr(x[lseg + lc + di] == 0.0)
-                logging.debug( "\tIgnored discordant edge at index %d." % (di),
+                logger.debug(
+                    "\tIgnored discordant edge at index %d." % (di),
                 )
         for srci in range(lsrc):
             cn_expr = gp.QuadExpr(0.0)
@@ -1560,7 +1561,7 @@ def maximize_weights_greedy(
             m.setParam(GRB.Param.Threads, num_threads)
         m.setParam(GRB.Param.NonConvex, 2)
         m.setParam(GRB.Param.TimeLimit, time_limit)  # each breakpoint edge is assigned 5 minutes
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tCompleted gurobi setup for model %d." % (cycle_id + 1),
@@ -1576,7 +1577,7 @@ def maximize_weights_greedy(
             + ".lp"
         )
         m.write(lp_fn)
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tWrote model to %d file: %s." % (cycle_id + 1, lp_fn),
@@ -1584,19 +1585,19 @@ def maximize_weights_greedy(
         log_fn = lp_fn[:-2] + "log"
         m.setParam(GRB.Param.LogFile, log_fn)
         m.optimize()
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tCompleted optimization of model %d with status %d." % (cycle_id + 1, m.Status),
         )
 
         if m.Status == GRB.INFEASIBLE or m.SolCount == 0:
-            logging.debug(
+            logger.debug(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\tModel %d is infeasible." % (cycle_id + 1),
             )
-            logging.debug(
+            logger.debug(
                 "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tIteration terminated.",
             )
             break
@@ -1607,14 +1608,15 @@ def maximize_weights_greedy(
         sol_r = m.getAttr("X", r)
         total_weights_included = 0.0
         if sol_z[0] >= 0.9:
-            logging.debug(
+            logger.debug(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\tNext cycle/path exists; CN = %f." % (sol_w[0]),
             )
             next_w = sol_w[0]
             if next_w < resolution:
-                logging.debug( "\tCN less than resolution, iteration terminated successfully.",
+                logger.debug(
+                    "\tCN less than resolution, iteration terminated successfully.",
                 )
                 break
             sol_x = m.getAttr("X", x)
@@ -1709,12 +1711,12 @@ def maximize_weights_greedy(
                             if remaining_CN[("d", xi - lseg - lc)] < resolution:
                                 remaining_CN[("d", xi - lseg - lc)] = 0.0
                         else:
-                            logging.debug(
+                            logger.debug(
                                 "#TIME "
                                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                                 + "\tError: Cyclic path cannot connect to source nodes.",
                             )
-                            logging.debug(
+                            logger.debug(
                                 "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tAborted.",
                             )
                             os.abort()
@@ -1730,7 +1732,7 @@ def maximize_weights_greedy(
                 path_constraints_satisfied[0].append(path_constraints_s)
             for seqi in range(lseg):
                 total_weights_included += sol_x[seqi] * sol_w[0] * g.sequence_edges[seqi][-2]
-            logging.debug(
+            logger.debug(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "Total length weighted CN from cycle/path %d = %f/%f."
@@ -1742,7 +1744,8 @@ def maximize_weights_greedy(
                 for i in range(len(pc_list)):
                     if unsatisfied_pc[i] >= 0:
                         num_unsatisfied_pc += 1
-                logging.debug("\tProportion of length weighted CN less than cn_tol, iteration terminated.",
+                logger.debug(
+                    "\tProportion of length weighted CN less than cn_tol, iteration terminated.",
                 )
                 break
         else:
@@ -1751,16 +1754,16 @@ def maximize_weights_greedy(
         for i in range(len(pc_list)):
             if unsatisfied_pc[i] >= 0:
                 num_unsatisfied_pc += 1
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tRemaining subpath constraints to be satisfied: %d/%d." % (num_unsatisfied_pc, len(pc_list)),
         )
-        logging.debug(
+        logger.debug(
             "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tProceed to next iteration.",
         )
     if next_w < resolution:
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tCycle/path reaches CN resolution, greedy iteration completed.",
@@ -1768,11 +1771,11 @@ def maximize_weights_greedy(
     elif (num_unsatisfied_pc <= math.floor((1.0 - p_subpaths) * len(pc_list))) and (
         remaining_weights <= (1.0 - p_total_weight) * total_weights
     ):
-        logging.debug("Cycles/paths reaches CN resolution, greedy iteration completed.")
+        logger.debug("Cycles/paths reaches CN resolution, greedy iteration completed.")
     else:
-        logging.debug(f"Proportion of length weighted CN less than cn_tol, greedy iteration completed.")
-    logging.debug(f"Total length weighted CN from cycles/paths = {total_weights - remaining_weights}/{total_weights}.")
-    logging.debug(f"Total num subpath constraints satisfied = {len(pc_list) - num_unsatisfied_pc}/{len(pc_list)}.")
+        logger.debug(f"Proportion of length weighted CN less than cn_tol, greedy iteration completed.")
+    logger.debug(f"Total length weighted CN from cycles/paths = {total_weights - remaining_weights}/{total_weights}.")
+    logger.debug(f"Total num subpath constraints satisfied = {len(pc_list) - num_unsatisfied_pc}/{len(pc_list)}.")
     return (
         total_weights - remaining_weights,
         len(pc_list) - num_unsatisfied_pc,
@@ -1802,18 +1805,18 @@ def cycle_decomposition(
         total_weights = 0.0
         for sseg in bb.lr_graph[amplicon_idx].sequence_edges:
             total_weights += sseg[7] * sseg[-1]  # type: ignore[operator]
-        logging.info(f"Begin cycle decomposition for amplicon {amplicon_idx + 1}.")
-        logging.info(f"Total CN weights = {total_weights}.")
+        logger.info(f"Begin cycle decomposition for amplicon {amplicon_idx + 1}.")
+        logger.info(f"Total CN weights = {total_weights}.")
 
         bb.longest_path_constraints[amplicon_idx] = longest_path_dict(
             bb.path_constraints[amplicon_idx],
         )
-        logging.info(f"Total num maximal subpath constraints = {len(bb.longest_path_constraints[amplicon_idx][0])}.")
+        logger.info(f"Total num maximal subpath constraints = {len(bb.longest_path_constraints[amplicon_idx][0])}.")
         for pathi in bb.longest_path_constraints[amplicon_idx][1]:
-            logging.debug(f"Subpath constraints {pathi} = {bb.longest_path_constraints[amplicon_idx][0][pathi]}")
+            logger.debug(f"Subpath constraints {pathi} = {bb.longest_path_constraints[amplicon_idx][0][pathi]}")
 
         k = max(10, ld // 2)  # Initial num cycles/paths
-        logging.info(f"Total num initial cycles / paths = {k}.")
+        logger.info(f"Total num initial cycles / paths = {k}.")
         nnodes = len(bb.lr_graph[amplicon_idx].nodes)  # Does not include s and t
         node_order = dict()
         ni_ = 0
@@ -1823,7 +1826,7 @@ def cycle_decomposition(
         nedges = lseg + lc + ld + 2 * lsrc + 2 * len(bb.lr_graph[amplicon_idx].endnodes)
         if nedges < k:
             k = nedges
-            logging.info(
+            logger.info(
                 "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "Reset num cycles/paths to %d." % k,
             )
         sol_flag = 0
@@ -1855,13 +1858,17 @@ def cycle_decomposition(
                     time_limit,
                     model_prefix,
                 )
-                logging.info("Completed greedy cycle decomposition.",
+                logger.info(
+                    "Completed greedy cycle decomposition.",
                 )
-                logging.info( "\tNum cycles = %d; num paths = %d." % (len(cycles_init[0]), len(cycles_init[1])),
+                logger.info(
+                    "\tNum cycles = %d; num paths = %d." % (len(cycles_init[0]), len(cycles_init[1])),
                 )
-                logging.info("\tTotal length weighted CN = %f/%f." % (total_cycle_weights_init, total_weights),
+                logger.info(
+                    "\tTotal length weighted CN = %f/%f." % (total_cycle_weights_init, total_weights),
                 )
-                logging.info( "\tTotal num subpath constraints satisfied = %d/%d."
+                logger.info(
+                    "\tTotal num subpath constraints satisfied = %d/%d."
                     % (
                         total_path_satisfied_init,
                         len(bb.longest_path_constraints[amplicon_idx][0]),
@@ -1888,22 +1895,22 @@ def cycle_decomposition(
                         time_limit,
                         model_prefix,
                     )
-                    logging.info(
+                    logger.info(
                         "#TIME "
                         + "%.4f\t" % (time.time() - state_provider.TSTART)
                         + "Completed postprocessing of the greedy solution.",
                     )
-                    logging.info(
+                    logger.info(
                         "#TIME "
                         + "%.4f\t" % (time.time() - state_provider.TSTART)
                         + "\tNum cycles = %d; num paths = %d." % (len(cycles_post[0]), len(cycles_post[1])),
                     )
-                    logging.info(
+                    logger.info(
                         "#TIME "
                         + "%.4f\t" % (time.time() - state_provider.TSTART)
                         + "\tTotal length weighted CN = %f/%f." % (total_cycle_weights_post, total_weights),
                     )
-                    logging.info(
+                    logger.info(
                         "#TIME "
                         + "%.4f\t" % (time.time() - state_provider.TSTART)
                         + "\tTotal num subpath constraints satisfied = %d/%d."
@@ -1943,19 +1950,25 @@ def cycle_decomposition(
                 model_prefix,
             )
             if status_ == GRB.INFEASIBLE:
-                logging.info( "Cycle decomposition is infeasible.",
+                logger.info(
+                    "Cycle decomposition is infeasible.",
                 )
-                logging.info( "Doubling k from %d to %d." % (k, k * 2),
+                logger.info(
+                    "Doubling k from %d to %d." % (k, k * 2),
                 )
                 k *= 2
             else:
-                logging.info( "Completed cycle decomposition with k = %d." % k,
+                logger.info(
+                    "Completed cycle decomposition with k = %d." % k,
                 )
-                logging.info( "\tNum cycles = %d; num paths = %d." % (len(cycles_[0]), len(cycles_[1])),
+                logger.info(
+                    "\tNum cycles = %d; num paths = %d." % (len(cycles_[0]), len(cycles_[1])),
                 )
-                logging.info("\tTotal length weighted CN = %f/%f." % (total_cycle_weights_, total_weights),
+                logger.info(
+                    "\tTotal length weighted CN = %f/%f." % (total_cycle_weights_, total_weights),
                 )
-                logging.info("\tTotal num subpath constraints satisfied = %d/%d."
+                logger.info(
+                    "\tTotal num subpath constraints satisfied = %d/%d."
                     % (total_path_satisfied_, len(bb.longest_path_constraints[amplicon_idx][0])),
                 )
                 print(f"{cycles_=}")
@@ -1965,7 +1978,8 @@ def cycle_decomposition(
                 sol_flag = 1
                 break
         if sol_flag == 0:
-            logging.info("Cycle decomposition is infeasible, switch to greedy cycle decomposition.",
+            logger.info(
+                "Cycle decomposition is infeasible, switch to greedy cycle decomposition.",
             )
             (
                 total_cycle_weights_init,
@@ -1989,20 +2003,20 @@ def cycle_decomposition(
                 time_limit,
                 model_prefix,
             )
-            logging.info(
+            logger.info(
                 "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "Completed greedy cycle decomposition.",
             )
-            logging.info(
+            logger.info(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\tNum cycles = %d; num paths = %d." % (len(cycles_init[0]), len(cycles_init[1])),
             )
-            logging.info(
+            logger.info(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\tTotal length weighted CN = %f/%f." % (total_cycle_weights_init, total_weights),
             )
-            logging.info(
+            logger.info(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\tTotal num subpath constraints satisfied = %d/%d."
@@ -2029,13 +2043,17 @@ def cycle_decomposition(
                     time_limit,
                     model_prefix,
                 )
-                logging.info("Completed postprocessing of the greedy solution.",
+                logger.info(
+                    "Completed postprocessing of the greedy solution.",
                 )
-                logging.info("\tNum cycles = %d; num paths = %d." % (len(cycles_post[0]), len(cycles_post[1])),
+                logger.info(
+                    "\tNum cycles = %d; num paths = %d." % (len(cycles_post[0]), len(cycles_post[1])),
                 )
-                logging.info("\tTotal length weighted CN = %f/%f." % (total_cycle_weights_post, total_weights),
+                logger.info(
+                    "\tTotal length weighted CN = %f/%f." % (total_cycle_weights_post, total_weights),
                 )
-                logging.info("\tTotal num subpath constraints satisfied = %d/%d."
+                logger.info(
+                    "\tTotal num subpath constraints satisfied = %d/%d."
                     % (
                         total_path_satisfied_post,
                         len(bb.longest_path_constraints[amplicon_idx][0]),
@@ -2203,17 +2221,17 @@ def eulerian_cycle_t(g, edges_next_cycle, path_constraints_next_cycle, path_cons
             unsatisfied_path_metric[2] = path_metric[2]
             best_cycle = eulerian_cycle_
     if len(unsatisfied_path_metric[0]) == 0:
-        logging.debug(
+        logger.debug(
             "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tCycle satisfies all subpath constraints.",
         )
     else:
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tThe following path constraints are not satisfied:",
         )
         for pathi in unsatisfied_path_metric[0]:
-            logging.debug(
+            logger.debug(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\t%s" % path_constraints_next_cycle[pathi],
@@ -2407,17 +2425,17 @@ def eulerian_path_t(g, edges_next_path, path_constraints_next_path, path_constra
             unsatisfied_path_metric[2] = path_metric[2]
             best_path = eulerian_path_
     if len(unsatisfied_path_metric[0]) == 0:
-        logging.debug(
+        logger.debug(
             "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tPath satisfies all subpath constraints.",
         )
     else:
-        logging.debug(
+        logger.debug(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "\tThe following path constraints are not satisfied:",
         )
         for pathi in unsatisfied_path_metric[0]:
-            logging.debug(
+            logger.debug(
                 "#TIME "
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\t%s" % path_constraints_next_path[pathi],
@@ -2430,7 +2448,7 @@ def output_cycles(
 ) -> None:
     """Write the result from cycle decomposition into *.cycles files"""
     for amplicon_idx in range(len(bb.lr_graph)):
-        logging.info(
+        logger.info(
             "#TIME "
             + "%.4f\t" % (time.time() - state_provider.TSTART)
             + "Output cycles for amplicon %d." % (amplicon_idx + 1),
@@ -2510,7 +2528,8 @@ def output_cycles(
         for cycle_i in cycle_indices:
             cycle_edge_list: list = []
             if cycle_i[0] == 0:  # cycles
-                logging.debug( "\tTraversing next cycle, CN = %f." % bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]],
+                logger.debug(
+                    "\tTraversing next cycle, CN = %f." % bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]],
                 )
                 path_constraints_satisfied_cycle = []
                 path_constraints_support_cycle = []
@@ -2554,7 +2573,8 @@ def output_cycles(
                 else:
                     fp.write("\n")
             else:  # paths
-                logging.debug( "\tTraversing next path, CN = %f." % bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]],
+                logger.debug(
+                    "\tTraversing next path, CN = %f." % bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]],
                 )
                 path_constraints_satisfied_path = []
                 path_constraints_support_path = []
@@ -2617,7 +2637,7 @@ def reconstruct_cycles(
         format="%(asctime)s:%(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
     )
     bb.compute_path_constraints()
-    logging.info("Computed all subpath constraints.")
+    logger.info("Computed all subpath constraints.")
 
     alpha_ = 0.01
     postprocess_ = 0
@@ -2639,12 +2659,12 @@ def reconstruct_cycles(
         time_limit=time_limit_,
         model_prefix=output_prefix,
     )
-    logging.info("Completed cycle decomposition for all amplicons.")
+    logger.info("Completed cycle decomposition for all amplicons.")
     if output_all_path_constraints:
         output_cycles(bb, output_prefix, output_all_paths=True)
     else:
         output_cycles(bb, output_prefix)
-    logging.info(
+    logger.info(
         "#TIME "
         + "%.4f\t" % (time.time() - state_provider.TSTART)
         + "Wrote cycles for all complicons to %s." % (output_prefix + "_amplicon*_cycles.txt"),

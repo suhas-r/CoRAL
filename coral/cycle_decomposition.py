@@ -80,7 +80,7 @@ def minimize_cycles(
             (8) List of the corresponding CN of the above paths
             (9) Subpath constraints (indices) satisfied by each path
     """
-    logging.debug(f"Regular cycle decomposition with at most {k} cycles/paths allowed.")
+    logger.debug(f"Regular cycle decomposition with at most {k} cycles/paths allowed.")
     lseg = len(bp_graph.sequence_edges)
     lc = len(bp_graph.concordant_edges)
     ld = len(bp_graph.discordant_edges)
@@ -88,8 +88,8 @@ def minimize_cycles(
     nnodes = len(bp_graph.nodes)
     nedges = lseg + lc + ld + 2 * lsrc + 2 * len(bp_graph.endnodes)
     endnode_list = [node for node in bp_graph.endnodes]
-    logging.debug(f"Num nodes to be used in QP = {nnodes}")
-    logging.debug(f"Num edges to be used in QP = {nedges}")
+    logger.debug(f"Num nodes to be used in QP = {nnodes}")
+    logger.debug(f"Num edges to be used in QP = {nedges}")
     print(f"Running non-post with {k} cycles/paths, {pc_list}")
 
     model = pyo.ConcreteModel(name=f"{model_prefix}/amplicon_{amplicon_id}_cycle_decomposition_{k=}")
@@ -447,9 +447,9 @@ def minimize_cycles(
     if (results.solver.status == pyo.SolverStatus.ok) and (
         results.solver.termination_condition == pyo.TerminationCondition.optimal
     ):
-        logging.debug("Found optimal solution.")
+        logger.debug("Found optimal solution.")
     elif results.solver.termination_condition == pyo.TerminationCondition.infeasible:
-        logging.debug("Model is infeasible.")
+        logger.debug("Model is infeasible.")
         pyomo.util.infeasible.log_infeasible_constraints(model, log_expression=True, log_variables=True)
 
     # sol_z = solver.getAttr("X", model.z)
@@ -457,8 +457,8 @@ def minimize_cycles(
     # sol_d = solver.getAttr("X", model.d)
     # sol_r = solver.getAttr("X", model.r)
     parsed_sol = parse_lp_solution(model, bp_graph, k, pc_list)
-    logging.debug(f"Total length weighted CN from cycles/paths = {parsed_sol.total_weights_included}/{total_weights}.")
-    logging.debug(
+    logger.debug(f"Total length weighted CN from cycles/paths = {parsed_sol.total_weights_included}/{total_weights}.")
+    logger.debug(
         f"Total num subpath constraints satisfied = {len(parsed_sol.path_constraints_satisfied_set)}/{len(pc_list)}."
     )
     return (
@@ -492,21 +492,21 @@ def cycle_decomposition(
         total_weights = 0.0
         for sseg in bp_graph.sequence_edges:
             total_weights += sseg[7] * sseg[-1]  # type: ignore[operator]
-        logging.info(f"Begin cycle decomposition for amplicon{amplicon_idx +1}.")
-        logging.info(f"Total CN weights = {total_weights}.")
+        logger.info(f"Begin cycle decomposition for amplicon{amplicon_idx +1}.")
+        logger.info(f"Total CN weights = {total_weights}.")
 
         bb.longest_path_constraints[amplicon_idx] = longest_path_dict(
             bb.path_constraints[amplicon_idx],
         )
-        logging.info(f"Total num maximal subpath constraints = {len(bb.longest_path_constraints[amplicon_idx][0])}.")
+        logger.info(f"Total num maximal subpath constraints = {len(bb.longest_path_constraints[amplicon_idx][0])}.")
         try:
             for pathi in bb.longest_path_constraints[amplicon_idx][1]:
-                logging.debug(f"Subpath constraint {pathi} = {bb.longest_path_constraints[amplicon_idx][0][pathi]}")
+                logger.debug(f"Subpath constraint {pathi} = {bb.longest_path_constraints[amplicon_idx][0][pathi]}")
         except:
             breakpoint()
 
         k = max(10, ld // 2)  # Initial num cycles/paths
-        logging.info(f"Initial num cycles/paths = {k}.")
+        logger.info(f"Initial num cycles/paths = {k}.")
         nnodes = len(bp_graph.nodes)  # Does not include s and t
         nedges = lseg + lc + ld + 2 * lsrc + 2 * len(bp_graph.endnodes)
         node_order = {}
@@ -516,7 +516,7 @@ def cycle_decomposition(
             ni_ += 1
         if nedges < k:
             k = nedges
-            logging.info(f"Reset num cycles/paths to {k}.")
+            logger.info(f"Reset num cycles/paths to {k}.")
         sol_flag = 0
         while k <= nedges:
             if (
@@ -546,10 +546,10 @@ def cycle_decomposition(
                     time_limit,
                     model_prefix,
                 )
-                logging.info("Completed greedy cycle decomposition.")
-                logging.info(f"Num cycles = {len(cycles_init[0])}; num paths = {len(cycles_init[1])}.")
-                logging.info(f"Total length weighted CN = {total_cycle_weights_init}/{total_weights}.")
-                logging.info(
+                logger.info("Completed greedy cycle decomposition.")
+                logger.info(f"Num cycles = {len(cycles_init[0])}; num paths = {len(cycles_init[1])}.")
+                logger.info(f"Total length weighted CN = {total_cycle_weights_init}/{total_weights}.")
+                logger.info(
                     f"Total num subpath constraints satisfied = {total_path_satisfied_init}/{len(bb.longest_path_constraints[amplicon_idx][0])}."
                 )
                 if postprocess == 1:
@@ -573,10 +573,10 @@ def cycle_decomposition(
                         time_limit,
                         model_prefix,
                     )
-                    logging.info("Completed postprocessing of the greedy solution.")
-                    logging.info(f"Num cycles = {len(cycles_post[0])}; num paths = {len(cycles_post[1])}.")
-                    logging.info(f"Total length weighted CN = {total_cycle_weights_post}/{total_weights}.")
-                    logging.info(
+                    logger.info("Completed postprocessing of the greedy solution.")
+                    logger.info(f"Num cycles = {len(cycles_post[0])}; num paths = {len(cycles_post[1])}.")
+                    logger.info(f"Total length weighted CN = {total_cycle_weights_post}/{total_weights}.")
+                    logger.info(
                         f"Total num subpath constraints satisfied = {total_path_satisfied_post}/{len(bb.longest_path_constraints[amplicon_idx][0])}."
                     )
                     bb.cycles[amplicon_idx] = cycles_post
@@ -610,14 +610,14 @@ def cycle_decomposition(
                 model_prefix,
             )
             if status_ == GRB.INFEASIBLE:
-                logging.info("Cycle decomposition is infeasible.")
-                logging.info(f"Doubling k from {k} to {k * 2}.")
+                logger.info("Cycle decomposition is infeasible.")
+                logger.info(f"Doubling k from {k} to {k * 2}.")
                 k *= 2
             else:
-                logging.info(f"Completed cycle decomposition with k = {k}.")
-                logging.info(f"Num cycles = {len(cycles_[0])}; num paths = {len(cycles_[1])}.")
-                logging.info(f"Total length weighted CN = {total_cycle_weights_}/{total_weights}.")
-                logging.info(
+                logger.info(f"Completed cycle decomposition with k = {k}.")
+                logger.info(f"Num cycles = {len(cycles_[0])}; num paths = {len(cycles_[1])}.")
+                logger.info(f"Total length weighted CN = {total_cycle_weights_}/{total_weights}.")
+                logger.info(
                     f"Total num subpath constraints satisfied = {total_path_satisfied_}/{len(bb.longest_path_constraints[amplicon_idx][0])}."
                 )
 
@@ -628,7 +628,7 @@ def cycle_decomposition(
                 sol_flag = 1
                 break
         if sol_flag == 0:
-            logging.info("Cycle decomposition is infeasible, switch to greedy cycle decomposition.")
+            logger.info("Cycle decomposition is infeasible, switch to greedy cycle decomposition.")
             (
                 total_cycle_weights_init,
                 total_path_satisfied_init,
@@ -651,23 +651,17 @@ def cycle_decomposition(
                 time_limit,
                 model_prefix,
             )
-            logging.info(
-                "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "Completed greedy cycle decomposition.",
+            logger.info(
+                "Completed greedy cycle decomposition.",
             )
-            logging.info(
-                "#TIME "
-                + "%.4f\t" % (time.time() - state_provider.TSTART)
-                + "\tNum cycles = %d; num paths = %d." % (len(cycles_init[0]), len(cycles_init[1])),
+            logger.info(
+                "\tNum cycles = %d; num paths = %d." % (len(cycles_init[0]), len(cycles_init[1])),
             )
-            logging.info(
-                "#TIME "
-                + "%.4f\t" % (time.time() - state_provider.TSTART)
-                + "\tTotal length weighted CN = %f/%f." % (total_cycle_weights_init, total_weights),
+            logger.info(
+                "\tTotal length weighted CN = %f/%f." % (total_cycle_weights_init, total_weights),
             )
-            logging.info(
-                "#TIME "
-                + "%.4f\t" % (time.time() - state_provider.TSTART)
-                + "\tTotal num subpath constraints satisfied = %d/%d."
+            logger.info(
+                "\tTotal num subpath constraints satisfied = %d/%d."
                 % (total_path_satisfied_init, len(bb.longest_path_constraints[amplicon_idx][0])),
             )
             if postprocess == 1:
@@ -691,25 +685,15 @@ def cycle_decomposition(
                     time_limit,
                     model_prefix,
                 )
-                logging.info(
-                    "#TIME "
-                    + "%.4f\t" % (time.time() - state_provider.TSTART)
-                    + "Completed postprocessing of the greedy solution.",
+                logger.info("Completed postprocessing of the greedy solution.")
+                logger.info(
+                    "Num cycles = %d; num paths = %d." % (len(cycles_post[0]), len(cycles_post[1])),
                 )
-                logging.info(
-                    "#TIME "
-                    + "%.4f\t" % (time.time() - state_provider.TSTART)
-                    + "\tNum cycles = %d; num paths = %d." % (len(cycles_post[0]), len(cycles_post[1])),
+                logger.info(
+                    "Total length weighted CN = %f/%f." % (total_cycle_weights_post, total_weights),
                 )
-                logging.info(
-                    "#TIME "
-                    + "%.4f\t" % (time.time() - state_provider.TSTART)
-                    + "\tTotal length weighted CN = %f/%f." % (total_cycle_weights_post, total_weights),
-                )
-                logging.info(
-                    "#TIME "
-                    + "%.4f\t" % (time.time() - state_provider.TSTART)
-                    + "\tTotal num subpath constraints satisfied = %d/%d."
+                logger.info(
+                    "Total num subpath constraints satisfied = %d/%d."
                     % (
                         total_path_satisfied_post,
                         len(bb.longest_path_constraints[amplicon_idx][0]),
@@ -877,21 +861,13 @@ def eulerian_cycle_t(g, edges_next_cycle, path_constraints_next_cycle, path_cons
             unsatisfied_path_metric[2] = path_metric[2]
             best_cycle = eulerian_cycle_
     if len(unsatisfied_path_metric[0]) == 0:
-        logging.debug(
-            "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tCycle satisfies all subpath constraints.",
+        logger.debug(
+            "Cycle satisfies all subpath constraints.",
         )
     else:
-        logging.debug(
-            "#TIME "
-            + "%.4f\t" % (time.time() - state_provider.TSTART)
-            + "\tThe following path constraints are not satisfied:",
-        )
+        logger.debug("The following path constraints are not satisfied:")
         for pathi in unsatisfied_path_metric[0]:
-            logging.debug(
-                "#TIME "
-                + "%.4f\t" % (time.time() - state_provider.TSTART)
-                + "\t%s" % path_constraints_next_cycle[pathi],
-            )
+            logger.debug(f"{path_constraints_next_cycle[pathi]}")
     return best_cycle
 
 
@@ -1081,11 +1057,11 @@ def eulerian_path_t(g: BreakpointGraph, edges_next_path, path_constraints_next_p
             unsatisfied_path_metric[2] = path_metric[2]
             best_path = eulerian_path_
     if len(unsatisfied_path_metric[0]) == 0:
-        logging.debug("Path satisfies all subpath constraints.")
+        logger.debug("Path satisfies all subpath constraints.")
     else:
-        logging.debug("The following path constraints are not satisfied:")
+        logger.debug("The following path constraints are not satisfied:")
         for pathi in unsatisfied_path_metric[0]:
-            logging.debug(f"{path_constraints_next_path[pathi]}")
+            logger.debug(f"{path_constraints_next_path[pathi]}")
     return best_path
 
 
@@ -1172,7 +1148,7 @@ def output_cycles(
         for cycle_i in cycle_indices:
             cycle_edge_list: list = []
             if cycle_i[0] == 0:  # cycles
-                logging.debug(f"Traversing next cycle, CN = {bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]]}")
+                logger.debug(f"Traversing next cycle, CN = {bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]]}")
                 path_constraints_satisfied_cycle = []
                 path_constraints_support_cycle = []
                 for pathi in bb.path_constraints_satisfied[amplicon_idx][cycle_i[0]][cycle_i[1]]:
@@ -1215,7 +1191,7 @@ def output_cycles(
                 else:
                     fp.write("\n")
             else:  # paths
-                logging.debug(f"Traversing next path, CN = {bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]]}")
+                logger.debug(f"Traversing next path, CN = {bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]]}")
                 path_constraints_satisfied_path = []
                 path_constraints_support_path = []
                 for pathi in bb.path_constraints_satisfied[amplicon_idx][cycle_i[0]][cycle_i[1]]:
@@ -1276,7 +1252,7 @@ def parse_lp_solution(model: pyo.Model, bp_graph: BreakpointGraph, k: int, pc_li
         logger.debug(f"Walk {i} checking ; CN = {model.w[i].value}.")
         if model.z[i].value >= 0.9:
             # if pyo.value(model.z[i] >= 0.9):
-            logging.debug(f"Cycle/Path {i} exists; CN = {model.w[i].value}.")
+            logger.debug(f"Cycle/Path {i} exists; CN = {model.w[i].value}.")
             # sol_x = m.getAttr("X", model.x)
             # sol_c = m.getAttr("X", model.c)
             cycle_flag = -1
@@ -1335,8 +1311,8 @@ def parse_lp_solution(model: pyo.Model, bp_graph: BreakpointGraph, k: int, pc_li
                         elif xi_ < lseg + lc + ld:
                             cycle[("d", xi_ - lseg - lc)] = x_xi
                         else:
-                            logging.debug(f"Error: Cyclic path cannot connect to source nodes.")
-                            logging.debug("Aborted.")
+                            logger.debug(f"Error: Cyclic path cannot connect to source nodes.")
+                            logger.debug("Aborted.")
                             os.abort()
                 for pi in range(len(pc_list)):
                     if model.r[pi * k + i] >= 0.9:
@@ -1391,9 +1367,9 @@ def reconstruct_cycles(
         time_limit=time_limit_,
         model_prefix=output_prefix,
     )
-    logging.info("Completed cycle decomposition for all amplicons.")
+    logger.info("Completed cycle decomposition for all amplicons.")
     if output_all_path_constraints:
         output_cycles(bb, output_prefix, output_all_paths=True)
     else:
         output_cycles(bb, output_prefix)
-    logging.info(f"Wrote cycles for all complicons to {output_prefix}_amplicon*_cycles.txt.")
+    logger.info(f"Wrote cycles for all complicons to {output_prefix}_amplicon*_cycles.txt.")

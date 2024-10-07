@@ -19,6 +19,8 @@ from coral import state_provider, types
 from coral.constants import CHR_TAG_TO_IDX
 from coral.types import AmpliconInterval
 
+logger = logging.getLogger(__name__)
+
 
 def test_clustering(rc_list, partition, max_multiplicity=5):
     if partition[0] == partition[1]:
@@ -393,27 +395,21 @@ class BreakpointGraph:
         lc = len(self.concordant_edges)
         ld = len(self.discordant_edges)
         lsrc = len(self.source_edges)
-        logging.debug(
+        logger.debug(
             "Adjacent list for estimating CN:",
         )
         for node in self.nodes.keys():
-            logging.debug(
-                "#TIME "
-                + "%.4f\t" % (time.time() - state_provider.TSTART)
-                + "Node %s; adjacent list = %s." % (str(node), self.nodes[node]),
+            logger.debug(
+                "Node %s; adjacent list = %s." % (str(node), self.nodes[node]),
             )
         nvariables = lseg + lc + ld + lsrc
-        logging.debug(
-            "#TIME "
-            + "%.4f\t" % (time.time() - state_provider.TSTART)
-            + "There are %d variables for cvxopt." % (nvariables),
+        logger.debug(
+            "There are %d variables for cvxopt." % (nvariables),
         )
         self.del_discordant_endnodes()
         nconstraints = len([node for node in self.nodes.keys() if node not in self.endnodes])
-        logging.debug(
-            "#TIME "
-            + "%.4f\t" % (time.time() - state_provider.TSTART)
-            + "There are %d constraints for cvxopt." % (nconstraints),
+        logger.debug(
+            "There are %d constraints for cvxopt." % (nconstraints),
         )
 
         wcn = [(normal_cov_sr * se[7] / sr_length + 0.5 * normal_cov_lr * se[7]) for se in self.sequence_edges]
@@ -495,25 +491,30 @@ class BreakpointGraph:
             )
             if sol["status"] == "optimal" or sol["status"] == "unknown":
                 if sol["status"] == "optimal":
-                    logging.debug(
+                    logger.debug(
                         "Found optimal solution.",
                     )
                 else:
-                    logging.debug(
+                    logger.debug(
                         "Reached maximum num iterations.",
                     )
-                logging.debug("primal objective = %f" % (sol["primal objective"]),
+                logger.debug(
+                    "primal objective = %f" % (sol["primal objective"]),
                 )
-                logging.debug("\tdual objective = %f" % (sol["dual objective"]),
+                logger.debug(
+                    "\tdual objective = %f" % (sol["dual objective"]),
                 )
-                logging.debug(
+                logger.debug(
                     "\tgap = %f" % (sol["gap"]),
                 )
-                logging.debug( "\trelative gap = %f" % (sol["relative gap"]),
+                logger.debug(
+                    "\trelative gap = %f" % (sol["relative gap"]),
                 )
-                logging.debug("\tprimal infeasibility = %f" % (sol["primal infeasibility"]),
+                logger.debug(
+                    "\tprimal infeasibility = %f" % (sol["primal infeasibility"]),
                 )
-                logging.debug("\tdual infeasibility = %f" % (sol["dual infeasibility"]),
+                logger.debug(
+                    "\tdual infeasibility = %f" % (sol["dual infeasibility"]),
                 )
                 for seqi in range(lseq):
                     self.sequence_edges[seqi][-1] = sol["x"][seqi] * 2
@@ -529,7 +530,7 @@ class BreakpointGraph:
                     self.max_cn = max(sol["x"][lseq + lc + ld + srci] * 2, self.max_cn)
         else:
             assert lc == 0 and ld == 0 and lsrc == 0
-            logging.debug(
+            logger.debug(
                 "Skipped convex optimization.",
             )
             for seqi in range(lseq):
@@ -550,26 +551,20 @@ class BreakpointGraph:
         lc = len(self.concordant_edges)
         ld = len(self.discordant_edges)
         lsrc = len(self.source_edges)
-        logging.debug(
+        logger.debug(
             "Adjacent list for estimating CN:",
         )
         for node in self.nodes.keys():
-            logging.debug(
-                "#TIME "
-                + "%.4f\t" % (time.time() - state_provider.TSTART)
-                + "Node %s; adjacent list = %s." % (str(node), self.nodes[node]),
+            logger.debug(
+                "Node %s; adjacent list = %s." % (str(node), self.nodes[node]),
             )
         nvariables = lseq + lc + ld + lsrc
-        logging.debug(
-            "#TIME "
-            + "%.4f\t" % (time.time() - state_provider.TSTART)
-            + "There are %d variables for cvxopt." % (nvariables),
+        logger.debug(
+            "There are %d variables for cvxopt." % (nvariables),
         )
         nconstraints = len([node for node in self.nodes.keys() if node not in self.endnodes])
-        logging.debug(
-            "#TIME "
-            + "%.4f\t" % (time.time() - state_provider.TSTART)
-            + "There are %d constraints for cvxopt." % (nconstraints),
+        logger.debug(
+            "There are %d constraints for cvxopt." % (nconstraints),
         )
 
         wcn = []
@@ -635,24 +630,30 @@ class BreakpointGraph:
             )
             if sol["status"] == "optimal" or sol["status"] == "unknown":
                 if sol["status"] == "optimal":
-                    logging.debug(
+                    logger.debug(
                         "Found optimal solution.",
                     )
                 else:
-                    logging.debug(
+                    logger.debug(
                         "Reached maximum num iterations.",
                     )
-                logging.debug("\tprimal objective = %f" % (sol["primal objective"]),
+                logger.debug(
+                    "\tprimal objective = %f" % (sol["primal objective"]),
                 )
-                logging.debug("\tdual objective = %f" % (sol["dual objective"]),
+                logger.debug(
+                    "\tdual objective = %f" % (sol["dual objective"]),
                 )
-                logging.debug( "\tgap = %f" % (sol["gap"]),
+                logger.debug(
+                    "\tgap = %f" % (sol["gap"]),
                 )
-                logging.debug("\trelative gap = %f" % (sol["relative gap"]),
+                logger.debug(
+                    "\trelative gap = %f" % (sol["relative gap"]),
                 )
-                logging.debug("\tprimal infeasibility = %f" % (sol["primal infeasibility"]),
+                logger.debug(
+                    "\tprimal infeasibility = %f" % (sol["primal infeasibility"]),
                 )
-                logging.debug("dual infeasibility = %f" % (sol["dual infeasibility"]),
+                logger.debug(
+                    "dual infeasibility = %f" % (sol["dual infeasibility"]),
                 )
                 for seqi in range(lseq):
                     self.sequence_edges[seqi][-1] = sol["x"][seqi] * 2
@@ -673,7 +674,7 @@ class BreakpointGraph:
                     self.max_cn = max(sol["x"][lseq + lc + ld + srci] * 2, self.max_cn)
         else:
             assert lc == 0 and ld == 0 and lsrc == 0
-            logging.debug("Skipped convex optimization.")
+            logger.debug("Skipped convex optimization.")
             for seqi in range(lseq):
                 se = self.sequence_edges[seqi]
                 cn_seqi = se[6] * 2.0 / (normal_cov_lr * se[7])

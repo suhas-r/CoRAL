@@ -17,6 +17,8 @@ from typing import Dict, NamedTuple
 from coral import state_provider
 from coral.types import Strand
 
+logger = logging.getLogger(__name__)
+
 
 class AlignmentPos(NamedTuple):
     start: int
@@ -258,15 +260,8 @@ def alignment_from_satags(sa_list, read_length):
         t = sa.split(",")
         if "S" not in t[3] or "M" not in t[3]:
             # Require a chimeric alignment record having at least some (soft)clips and matches
-            logging.warning(
-                "#TIME "
-                + "%.4f\t" % (time.time() - state_provider.TSTART)
-                + "Found chimeric alignment without match or soft clips.",
-            )
-            # logging.warning("#TIME " + '%.4f\t' %(time.time() - state_provider.TSTART) + "\tRead name: %s; Read length: %d." %(r, read_length))
-            logging.warning(
-                "#TIME " + "%.4f\t" % (time.time() - state_provider.TSTART) + "\tAll CIGAR strings: %s." % (sa_list),
-            )
+            logger.warning("Found chimeric alignment without match or soft clips.")
+            logger.warning("\tAll CIGAR strings: %s." % (sa_list))
             return ([], [], [])
         op = "".join(c for c in t[3] if not c.isdigit())
         qs, qe, al = cigar2pos_ops[op](t[3], t[2], read_length)

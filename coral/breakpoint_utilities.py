@@ -578,7 +578,6 @@ def bpc2bp(bp_cluster, bp_distance_cutoff):
     """
     Call exact breakpoint from a breakpoint cluster
     """
-    # logging.debug("#TIME " + '%.4f\t' %(time.time() - state_provider.TSTART) + "\tbp_cluster = %s" %(bp_cluster))
     bp = bp_cluster[0][:-2]
     bp[1] = 0 if bp[2] == "+" else 1000000000
     bp[4] = 0 if bp[5] == "+" else 1000000000
@@ -637,7 +636,6 @@ def bpc2bp(bp_cluster, bp_distance_cutoff):
                 bp[4] = int(math.ceil(np.median(bp4_list)))
             else:
                 bp[4] = int(math.floor(np.median(bp4_list)))
-    # logging.debug("#TIME " + '%.4f\t' %(time.time() - state_provider.TSTART) + "\tbp = %s" %(bp))
     bp_cluster_r = []
     for bp_ in bp_cluster:
         if bp_match(bp_, bp, bp_[7] * 1.2, [bp_distance_cutoff, bp_distance_cutoff]):
