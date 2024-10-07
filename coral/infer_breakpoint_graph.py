@@ -169,7 +169,7 @@ class BamToBreakpointNanopore:
                 self.cns_intervals[log2_cn_order[im - i]][2] - self.cns_intervals[log2_cn_order[im - i]][1] + 1
             )
             i += 1
-        logger.debug(state_provider.get_timed_task_log(f"Use {len(cns_intervals_median)} LR copy number segments."))
+        logger.debug(f"Use {len(cns_intervals_median)} LR copy number segments.")
         logger.debug(f"Total length of LR copy number segments: {total_int_len}.")
         logger.debug(f"Average LR copy number: {np.average(log2_cn_median)}.")
         nnc = 0

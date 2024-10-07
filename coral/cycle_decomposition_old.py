@@ -112,10 +112,11 @@ def minimize_cycles(
     for i in range(k):
         for seqi in range(lseg):
             total_weights_expr += x[seqi * k + i] * w[i] * bp_graph.sequence_edges[seqi][-2]
-    print(p_total_weight * total_weights, total_weights)
+    # print(p_total_weight * total_weights, total_weights)
     m.addConstr(total_weights_expr >= p_total_weight * total_weights)
 
     # Eulerian constraint
+    breakpoint()
     for node in bp_graph.nodes.keys():
         if node in endnode_list:
             for i in range(k):
@@ -123,6 +124,7 @@ def minimize_cycles(
                     x[(lseg + lc + ld + 2 * lsrc + 2 * endnode_list.index(node)) * k + i]
                     + x[(lseg + lc + ld + 2 * lsrc + 2 * endnode_list.index(node)) * k + k + i]
                     == x[bp_graph.nodes[node][0][0] * k + i],
+                    name="eulerian",
                 )
         else:
             for i in range(k):
@@ -343,7 +345,7 @@ def minimize_cycles(
                     expr_x += x[(lseg + ci) * k + i]
                     expr_xc += x[(lseg + ci) * k + i] * c[k * node_order[node] + i]
                     if node_order[node_] <= node_order[node]:
-                        expr_y += y1[(lseg + ci) * k + i]
+                        expr_y += y[(lseg + ci) * k + i]
                         expr_yd += y1[(lseg + ci) * k + i] * (
                             d[k * node_order[node] + i] - d[k * node_order[node_] + i]
                         )
@@ -395,7 +397,7 @@ def minimize_cycles(
         sum_r = gp.LinExpr(0.0)
         for ri in range(pi * k, (pi + 1) * k):
             sum_r += r[ri]
-        m.addConstr(sum_r >= 1.0)
+        m.addConstr(sum_r >= 1.0,name="constr_subpath")
         for edge in path_constraint_.keys():
             for i in range(k):
                 if edge[0] == "s":
@@ -448,6 +450,8 @@ def minimize_cycles(
     sol_w = m.getAttr("X", w)
     sol_d = m.getAttr("X", d)
     sol_r = m.getAttr("X", r)
+    sol_x = m.getAttr("X", x)
+    sol_c = m.getAttr("X", c)
     total_weights_included = 0.0
     for i in range(k):
         if sol_z[i] >= 0.9:
@@ -456,8 +460,6 @@ def minimize_cycles(
                 + "%.4f\t" % (time.time() - state_provider.TSTART)
                 + "\tCycle/Path %d exists; CN = %f." % (i, sol_w[i]),
             )
-            sol_x = m.getAttr("X", x)
-            sol_c = m.getAttr("X", c)
             cycle_flag = -1
             for ci in range(len(sol_c)):
                 if ci % k == i and sol_c[ci] >= 0.9:

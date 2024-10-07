@@ -87,7 +87,7 @@ def minimize_cycles(
     lsrc = len(bp_graph.source_edges)
     nnodes = len(bp_graph.nodes)
     nedges = lseg + lc + ld + 2 * lsrc + 2 * len(bp_graph.endnodes)
-    endnode_list = [node for node in bp_graph.endnodes]
+    endnode_list = [node for node in bp_graph.endnodes.keys()]
     logger.debug(f"Num nodes to be used in QP = {nnodes}")
     logger.debug(f"Num edges to be used in QP = {nedges}")
     print(f"Running non-post with {k} cycles/paths, {pc_list}")
@@ -106,13 +106,16 @@ def minimize_cycles(
     # model.k = pyo.Param(model.K, domain=pyo.NonNegativeIntegers)
 
     # z[i]: indicating whether cycle or path i exists
-    model.z = pyo.Var(model.k, within=pyo.Binary)
+    model.z = pyo.Var(model.k, domain=pyo.Binary)
 
     # w[i]: the weight of cycle or path i, continuous variable
     model.w = pyo.Var(model.k, domain=pyo.NonNegativeReals, bounds=(0.0, bp_graph.max_cn))
 
     # Relationship between w[i] and z[i]\
-    model.ConstraintWZ = pyo.Constraint(model.k, rule=lambda model, i: model.w[i] <= model.z[i] * bp_graph.max_cn)
+    model.ConstraintWZList = pyo.ConstraintList()
+    for i in range(k):
+        model.ConstraintWZList.add(model.w[i] <= model.z[i] * bp_graph.max_cn)
+    # model.ConstraintWZ = pyo.Constraint(model.k, rule=lambda model, i: model.w[i] <= model.z[i] * bp_graph.max_cn)
 
     # x: the number of times an edge occur in cycle or path i
     model.x = pyo.Var(model.edge_idx, model.k, domain=pyo.Integers, bounds=(0.0, 10.0))
@@ -133,20 +136,15 @@ def minimize_cycles(
     model.ConstraintTotalWeights = pyo.Constraint(expr=(total_weights_expr >= p_total_weight * total_weights))
 
     # Eulerian constraint
+    model.ConstraintEulerianEnd = pyo.ConstraintList()
+    model.ConstraintEulerian = pyo.ConstraintList()
     for node in bp_graph.nodes:
         if node in endnode_list:
-
-            def constrain_eulerian_end(model: pyo.Model, i: int) -> pyo.Expression:
-                return (
-                    model.x[(lseg + lc + ld + 2 * lsrc + 2 * endnode_list.index(node)), i]
-                    + model.x[(lseg + lc + ld + 2 * lsrc + 2 * endnode_list.index(node)) + 1, i]
-                    == model.x[bp_graph.nodes[node][0][0], i]
-                )
-
-            model.ConstraintEulerianEnd = pyo.Constraint(model.k, rule=constrain_eulerian_end)
+            for i in range(k):
+                edge_idx = (lseg + lc + ld + 2 * lsrc + 2 * endnode_list.index(node))
+                model.ConstraintEulerianEnd.add(model.x[edge_idx, i] + model.x[edge_idx + 1, i] == model.x[bp_graph.nodes[node][0][0], i])
         else:
-
-            def constrain_eulerian(model: pyo.Model, i: int) -> pyo.Expression:
+            for i in range(k):
                 ec_expr = 0.0
                 for seqi in bp_graph.nodes[node][0]:
                     ec_expr += model.x[seqi, i]
@@ -157,9 +155,7 @@ def minimize_cycles(
                 for srci in bp_graph.nodes[node][3]:
                     ec_expr -= model.x[(lseg + lc + ld + 2 * srci), i]  # connected to s
                     ec_expr -= model.x[(lseg + lc + ld + 2 * srci) + 1, +i]  # connected to t
-                return ec_expr == 0.0
-
-            model.ConstraintEulerian = pyo.Constraint(model.k, rule=constrain_eulerian)
+                model.ConstraintEulerian.add(ec_expr == 0.0)
 
     def constrain_eulerian_path(model: pyo.Model, i: int) -> pyo.Expression:
         path_expr = 0.0
@@ -234,9 +230,8 @@ def minimize_cycles(
                 expr_xc += model.c[node_order[node], i] * model.x[(lseg + ci), i]
             for di in set(bp_graph.nodes[node][2]):
                 expr_xc += model.c[node_order[node], i] * model.x[(lseg + lc + di), i]
-        return (
-            expr_xc <= 1.0 if expr_xc else pyo.Constraint.Skip
-        )  # Skip trivial constraints when all components have 0 coeff
+        # Skip trivial constraints when all components have 0 coeff
+        return expr_xc <= 1.0 if expr_xc else pyo.Constraint.Skip
 
     model.ConstraintSingularBPEdge = pyo.Constraint(model.k, rule=constrain_singular_bp_edge)
 
@@ -246,8 +241,8 @@ def minimize_cycles(
     model.dt = pyo.Var(model.k, within=pyo.NonNegativeIntegers, bounds=(0.0, nnodes + 2))
 
     # y: spanning tree indicator (directed)
-    model.y1 = pyo.Var(model.edge_idx, model.k, within=pyo.Binary)
-    model.y2 = pyo.Var(model.edge_idx, model.k, within=pyo.Binary)
+    model.y1 = pyo.Var(model.edge_idx, model.k, domain=pyo.Binary)
+    model.y2 = pyo.Var(model.edge_idx, model.k, domain=pyo.Binary)
 
     # Relationship between c and d
     model.ConstraintCD1 = pyo.Constraint(
@@ -259,10 +254,10 @@ def minimize_cycles(
 
     # Relationship between y and z:
     model.ConstraintY1Z = pyo.Constraint(
-        model.k, model.edge_idx, rule=lambda model, i, j: model.y1[j, +i] <= model.z[i]
+        model.k, model.edge_idx, rule=lambda model, i, j: model.y1[j, i] <= model.z[i]
     )
     model.ConstraintY2Z = pyo.Constraint(
-        model.k, model.edge_idx, rule=lambda model, i, j: model.y2[j, +i] <= model.z[i]
+        model.k, model.edge_idx, rule=lambda model, i, j: model.y2[j, i] <= model.z[i]
     )
 
     # Relationship between x, y and d
@@ -452,6 +447,7 @@ def minimize_cycles(
         logger.debug("Model is infeasible.")
         pyomo.util.infeasible.log_infeasible_constraints(model, log_expression=True, log_variables=True)
 
+    # model.display()
     # sol_z = solver.getAttr("X", model.z)
     # sol_w = solver.getAttr("X", model.w)
     # sol_d = solver.getAttr("X", model.d)
@@ -1209,7 +1205,6 @@ def output_cycles(
                     path_constraints_support_path,
                 )
                 print(cycle_seg_list, bb.cycles[amplicon_idx][cycle_i[0]][cycle_i[1]])
-                # breakpoint()
                 fp.write("Cycle=%d;" % (cycle_indices.index(cycle_i) + 1))
                 fp.write(
                     "Copy_count=%s;" % str(bb.cycle_weights[amplicon_idx][cycle_i[0]][cycle_i[1]]),
@@ -1218,6 +1213,7 @@ def output_cycles(
                 for segi in range(len(cycle_seg_list) - 1):
                     fp.write("%d%s," % (int(cycle_seg_list[segi][:-1]), cycle_seg_list[segi][-1]))
 
+                # breakpoint()
                 fp.write("%d%s,0-" % (int(cycle_seg_list[-1][:-1]), cycle_seg_list[-1][-1]))
                 if not output_all_paths:
                     fp.write(";Path_constraints_satisfied=")

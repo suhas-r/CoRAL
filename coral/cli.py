@@ -150,7 +150,7 @@ def reconstruct(
         log_file,
     )
     if not (output_bp or skip_cycle_decomp):
-        cycle_decomposition_old.reconstruct_cycles(
+        cycle_decomposition.reconstruct_cycles(
             output_prefix,
             output_all_path_constraints,
             cycle_decomp_alpha,
@@ -160,7 +160,6 @@ def reconstruct(
             b2bn,
         )
     b2bn.closebam()
-    infer_breakpoint_graph.print_complete_message()
     print("\nCompleted reconstruction.")
 
 
