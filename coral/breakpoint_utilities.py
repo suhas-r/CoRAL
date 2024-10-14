@@ -517,7 +517,7 @@ def cluster_bp_list(bp_list, min_cluster_size, bp_distance_cutoff):
             bp_dict[(bp[0], bp[3], bp[2], bp[5])] = [bpi]
 
     bp_clusters = []
-    for bp_chr_or in bp_dict.keys():
+    for bp_chr_or in bp_dict:
         if len(bp_dict[bp_chr_or]) >= min_cluster_size:
             bp_clusters_ = []
             for bpi in bp_dict[bp_chr_or]:
@@ -579,8 +579,8 @@ def bpc2bp(bp_cluster, bp_distance_cutoff):
     Call exact breakpoint from a breakpoint cluster
     """
     bp = bp_cluster[0][:-2]
-    bp[1] = 0 if bp[2] == "+" else 1000000000
-    bp[4] = 0 if bp[5] == "+" else 1000000000
+    bp[1] = 0 if bp[2] == "+" else 1_000_000_000
+    bp[4] = 0 if bp[5] == "+" else 1_000_000_000
     bpr = []
     bp_stats = [0, 0, 0, 0]
     bp_stats_ = [0, 0, 0, 0, 0, 0]

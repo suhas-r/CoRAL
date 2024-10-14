@@ -1,3 +1,4 @@
+import enum
 from typing import Any, Literal
 
 CigarString = str

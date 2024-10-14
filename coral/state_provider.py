@@ -2,4 +2,3 @@
 
 # Time since main function starts. Used for logging output
 TSTART: float = 0.0
-

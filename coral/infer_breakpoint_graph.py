@@ -54,7 +54,7 @@ class CNSSegData:
 
     @classmethod
     def from_file(cls, file: io.TextIOWrapper) -> CNSSegData:
-        tree, log2_cn = {}, []
+        tree, log2_cns = {}, []
         intervals = []
         intervals_by_chr: Dict[str, List[List[Any]]] = {}
         is_cns = file.name.endswith(".cns")
@@ -64,7 +64,7 @@ class CNSSegData:
         for line in file:
             fields = line.strip().split()
             chr_tag, start, end = fields[0], int(fields[1]), int(fields[2])
-            intervals.append((chr_tag, start, end - 1))
+            intervals.append([chr_tag, start, end - 1])
             if chr_tag not in tree:
                 tree[chr_tag] = intervaltree.IntervalTree()
                 intervals_by_chr[chr_tag] = []
@@ -73,13 +73,13 @@ class CNSSegData:
             idx += 1
 
             # Calc log2 CN for .cns
-            log2 = float(fields[4]) if is_cns else np.log2(float(fields[3]) / 2.0)
-            raw_cn = 2 * (2**log2) if is_cns else float(fields[3])
+            log2_cn = float(fields[4]) if is_cns else np.log2(float(fields[3]) / 2.0)
+            raw_cn = 2 * (2**log2_cn) if is_cns else float(fields[3])
 
-            log2_cn.append(log2)
+            log2_cns.append(log2_cn)
             intervals_by_chr[chr_tag].append([chr_tag, start, end - 1, raw_cn])
 
-        return cls(tree, intervals, intervals_by_chr, log2_cn)
+        return cls(tree, intervals, intervals_by_chr, log2_cns)
 
 
 @dataclass
@@ -187,7 +187,7 @@ class BamToBreakpointNanopore:
                 ]
             )
         self.normal_cov = nnc * 1.0 / total_int_len
-        logger.info(f"LR normal cov ={self.normal_cov}.")
+        logger.info(f"LR normal cov ={self.normal_cov}, {nnc=}, {total_int_len=}.")
         self.min_cluster_cutoff = max(
             self.min_cluster_cutoff,
             self.min_bp_cov_factor * self.normal_cov,
@@ -264,12 +264,9 @@ class BamToBreakpointNanopore:
                     self.chimeric_alignments[read][1][ri].append(set([-1]))
         logger.info("Completed hashing chimeric reads to CN segments.")
 
-
     def find_amplicon_intervals(self):
         # Reset seed intervals
-        logger.debug(
-            "Updating seed amplicon intervals according to CN segments.",
-        )
+        logger.debug("Updating seed amplicon intervals according to CN segments.")
         for ai in range(len(self.amplicon_intervals)):
             chr = self.amplicon_intervals[ai][0]
             lcni = list(self.pos2cni(chr, self.amplicon_intervals[ai][1]))[0].data
@@ -300,21 +297,17 @@ class BamToBreakpointNanopore:
                 > 0
             ):
                 self.amplicon_intervals[ai][2] = self.cns_intervals_by_chr[chr][rcni][2] + self.interval_delta
-            logger.debug("\tUpdated amplicon interval %s" % self.amplicon_intervals[ai])
+            logger.debug(f"\tUpdated amplicon interval {self.amplicon_intervals[ai]}")
 
         ccid = 0
         for ai in range(len(self.amplicon_intervals)):
             if self.amplicon_intervals[ai][3] == -1:
-                logger.debug(
-                    "Begin processing amplicon interval %d" % ai,
-                )
-                logger.debug(
-                    "\tAmplicon interval %s" % self.amplicon_intervals[ai],
-                )
+                logger.debug(f"Begin processing amplicon interval {ai}")
+                logger.debug(f"\tAmplicon interval {self.amplicon_intervals[ai]}")
                 self.find_interval_i(ai, ccid)
                 ccid += 1
         logger.debug(
-            "Identified %d amplicon intervals in total." % len(self.amplicon_intervals),
+            f"Identified {len(self.amplicon_intervals)} amplicon intervals in total.",
         )
         sorted_ai_indices = sorted(
             range(len(self.amplicon_intervals)),
@@ -322,7 +315,7 @@ class BamToBreakpointNanopore:
         )
         amplicon_intervals_sorted = [self.amplicon_intervals[i] for i in sorted_ai_indices]
         for ai in range(len(amplicon_intervals_sorted)):
-            logger.debug("\tAmplicon interval %s" % amplicon_intervals_sorted[ai])
+            logger.debug(f"\tAmplicon interval {amplicon_intervals_sorted[ai]}")
 
         # Merge amplicon intervals
         logger.debug("Begin merging adjacent intervals.")
@@ -367,7 +360,7 @@ class BamToBreakpointNanopore:
                                 "Updated amplicon interval: %s" % amplicon_intervals_sorted[ai_],
                             )
             # Modify interval connections
-            connection_map = dict()
+            connection_map = {}
             for connection in self.amplicon_interval_connections.keys():
                 connection_map[connection] = connection
             for ai in range(int_range[0] + 1, int_range[1] + 1):
@@ -385,10 +378,7 @@ class BamToBreakpointNanopore:
                         )
             for connection in connection_map:
                 if connection != connection_map[connection]:
-                    logger.debug(
-                        "Reset connection between amplicon intervals %s to %s."
-                        % (connection, connection_map[connection]),
-                    )
+                    logger.debug(f"Reset connection between amplicon intervals {connection} to {connection_map[connection]}.")
                     if connection_map[connection] not in self.amplicon_interval_connections:
                         self.amplicon_interval_connections[connection_map[connection]] = (
                             self.amplicon_interval_connections[connection]
@@ -401,9 +391,10 @@ class BamToBreakpointNanopore:
                     if connection_map[connection][0] == connection_map[connection][1]:
                         del self.amplicon_interval_connections[connection_map[connection]]
             # Delete intervals
+
             for ai in range(int_range[0] + 1, int_range[1] + 1)[::-1]:
                 ai_unsorted = sorted_ai_indices[ai]
-                logger.debug(f"Delete amplicon interval {ai_unsorted} - {amplicon_intervals_sorted[ai_unsorted]}.")
+                logger.debug(f"Delete amplicon interval {ai_unsorted} - {self.amplicon_intervals[ai_unsorted]}.")
                 del amplicon_intervals_sorted[ai]
                 del sorted_ai_indices[ai]
 
@@ -471,20 +462,18 @@ class BamToBreakpointNanopore:
                 by a breakpoint edge
         Assign I a connected component id ccid if not already assigned
         """
-        logger.debug(
-            "\tStart BFS on amplicon interval %d." % ai,
-        )
+        logger.debug(f"\tStart BFS on amplicon interval {ai}.")
         L = [ai]  # BFS queue
         while len(L) > 0:
-            logger.debug("\t\tBFS queue: %s" % L)
+            logger.debug(f"\t\tBFS queue: {L}")
             ai_ = L.pop(0)
-            logger.debug("\t\tNext amplicon interval %d: %s." % (ai_, self.amplicon_intervals[ai_]))
+            logger.debug(f"\t\tNext amplicon interval {ai_}: {self.amplicon_intervals[ai_]}.")
             chr = self.amplicon_intervals[ai_][0]
             s = self.amplicon_intervals[ai_][1]
             e = self.amplicon_intervals[ai_][2]
             if self.amplicon_intervals[ai_][3] == -1:
                 self.amplicon_intervals[ai_][3] = ccid
-            logger.debug("\t\tReset connected component ID to %d" % ccid)
+            logger.debug(f"\t\tReset connected component ID to {ccid}")
 
             # Identify all amplification intervals connected to interval indexed by ai_ with a breakpoint edge
             try:
@@ -553,9 +542,7 @@ class BamToBreakpointNanopore:
                 for nint_ in new_intervals:
                     ns = self.cns_intervals_by_chr[nint_[0]][nint_[1]][1]
                     ne = self.cns_intervals_by_chr[nint_[0]][nint_[2]][2]
-                    logger.debug(
-                        "\t\tRefining new interval %s." % [chr_, ns, ne],
-                    )
+                    logger.debug(f"\t\tRefining new interval {[chr_, ns, ne]}.")
                     new_bp_list = []
                     if self.nm_filter:
                         for r in nint_[-1]:
@@ -578,59 +565,41 @@ class BamToBreakpointNanopore:
                                 [nint_[0], ns, ne],
                                 self.amplicon_intervals[ai_],
                             )
-                    logger.debug(
-                        "\t\tFound %d reads connecting the two intervals." % len(new_bp_list),
-                    )
+                    logger.debug(f"\t\tFound {len(new_bp_list)} reads connecting the two intervals.")
+                    # logger.debug(f"\t\tFound {len(new_bp_list)} reads ({sorted(new_bp_list)}) connecting the two intervals.")
+
                     new_bp_clusters = cluster_bp_list(
                         new_bp_list,
                         self.min_cluster_cutoff,
                         self.max_breakpoint_distance_cutoff,
                     )
-                    logger.debug(
-                        "\t\tThese reads formed %d clusters." % (len(new_bp_clusters)),
-                    )
+                    logger.debug(f"\t\tThese reads formed {len(new_bp_clusters)} clusters.")
                     new_bp_refined = []
                     for c in new_bp_clusters:
-                        logger.debug(
-                            "\t\t\tNew cluster of size %d." % (len(c)),
-                        )
+                        logger.debug(f"\t\t\tNew cluster of size {len(c)}.")
+                        bp_cluster_r = c
                         if len(c) >= self.min_cluster_cutoff:
                             num_subcluster = 0
-                            bp_cluster_r = c
                             while len(bp_cluster_r) >= self.min_cluster_cutoff:
+                                logger.debug(f"\t\t\t\tSubcluster {num_subcluster}")
+                                num_subcluster += 1 # TODO: this isn't in old code? just a pointless variable?
                                 bp, bpr, bp_stats_, bp_cluster_r = bpc2bp(
                                     bp_cluster_r,
                                     self.min_bp_match_cutoff_,
                                 )
-                                logger.debug(
-                                    "\tSubcluster %d" % (num_subcluster),
-                                )
-                                logger.debug(
-                                    "\t\t\t\tbp = %s" % (bp),
-                                )
-                                logger.debug(
-                                    "\t\t\t\tNum long read support = %d" % (len(set(bpr))),
-                                )
-                                logger.debug(
-                                    "\t\t\t\tbp_stats = %s" % (bp_stats_),
-                                )
-                                if (num_subcluster == 0 and len(set(bpr)) >= self.min_cluster_cutoff) or (
+                                logger.debug(f"\t\t\t\t\tbp = {bp}")
+                                logger.debug(f"\t\t\t\t\tNum long read support = {len(set(bpr))}")
+                                logger.debug(f"\t\t\t\t\tbp_stats = {(bp_stats_)}")
+                                if (len(set(bpr)) >= self.min_cluster_cutoff) or (
                                     len(set(bpr)) >= max(self.normal_cov * self.min_bp_cov_factor, 3.0)
                                 ):
                                     bpi = self.addbp(bp, set(bpr), bp_stats_, ccid)
                                     if bpi not in new_bp_refined:
                                         new_bp_refined.append(bpi)
-                                    logger.debug(
-                                        "\t\t\tKeeped the cluster.",
-                                    )
+                                    logger.debug("\t\t\t\tKept the cluster.")
                                 else:
-                                    logger.debug(
-                                        "\t\t\tDiscarded the cluster.",
-                                    )
-                        else:
-                            logger.debug(
-                                "\t\t\tDiscarded the cluster.",
-                            )
+                                    logger.debug("\t\t\t\tDiscarded the cluster.")
+                            # logger.debug("\t\t\tDiscarded the cluster.") # TODO: confirm this is misleading?
 
                     nint_segs = []
                     nint_segs_ = []
@@ -1078,14 +1047,10 @@ class BamToBreakpointNanopore:
                             except:
                                 self.amplicon_interval_connections[(min(io1, io2), max(io1, io2))] = set([bpi])
                     else:
-                        logger.debug(
-                            "\tDiscarded the subcluster %d." % (num_subcluster),
-                        )
+                        logger.debug(f"\tDiscarded the subcluster {num_subcluster}.")
                     num_subcluster += 1
             else:
-                logger.debug(
-                    "\tDiscarded the cluster.",
-                )
+                logger.debug("\tDiscarded the cluster.")
 
     def find_smalldel_breakpoints(self):
         """Search for breakpoints from a single alignment record, within identified amplified intervals
@@ -1849,9 +1814,7 @@ class BamToBreakpointNanopore:
                     rints_ = self.large_indel_alignments[rn]
                     rint_split = []
                     skip = 0
-                    logger.debug(
-                        f"Read {rn} covers breakpoints and small del breakpoints."
-                    )
+                    logger.debug(f"Read {rn} covers breakpoints and small del breakpoints.")
                     logger.debug(
                         "\tAlignment intervals on reference = %s; mapq = %s" % (rints, self.chimeric_alignments[rn][2]),
                     )
@@ -2002,7 +1965,9 @@ class BamToBreakpointNanopore:
                                 self.path_constraints[amplicon_idx][0].append(path)
                                 self.path_constraints[amplicon_idx][1].append(1)
                                 self.path_constraints[amplicon_idx][2].append(concordant_reads[rn])
-            logger.debug(f"There are {len(self.path_constraints[amplicon_idx][0])} distinct subpaths in amplicon {amplicon_idx + 1}.")
+            logger.debug(
+                f"There are {len(self.path_constraints[amplicon_idx][0])} distinct subpaths in amplicon {amplicon_idx + 1}."
+            )
 
     def closebam(self):
         """Close the short read and long read bam file"""
@@ -2024,18 +1989,18 @@ def reconstruct_graph(
     postprocess_greedy_sol: bool,
     log_file: str,
 ):
-    bam_file = pysam.AlignmentFile(lr_bam_filename, "rb")
     seed_intervals = breakpoint_utilities.get_intervals_from_seed_file(cnv_seed_file)  # type: ignore[arg-type] # file is passed as IO stream
     logger.debug(f"Parsed {len(seed_intervals)} seed amplicon intervals.")
     for interval in seed_intervals:
         logger.debug(f"Seed interval: {interval[:3]}")
 
-    b2bn = BamToBreakpointNanopore(bam_file, amplicon_intervals=seed_intervals, min_bp_cov_factor=min_bp_support)
+    b2bn = BamToBreakpointNanopore(lr_bamfh=pysam.AlignmentFile(lr_bam_filename, "rb"), amplicon_intervals=seed_intervals)
     # if filter_bp_by_edit_distance:
     # b2bn.nm_filter = True
     b2bn.min_bp_cov_factor = min_bp_support
     logger.info("Opened LR bam files.")
-    b2bn.read_cns(cn_seg_file)
+
+    b2bn.read_cns(cn_seg_file) # type: ignore[arg-type] # click.File is passed as IO stream
     logger.info("Completed parsing CN segment files.")
     b2bn.fetch()
     logger.info("Completed fetching reads containing breakpoints.")

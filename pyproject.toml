@@ -44,6 +44,7 @@ mypy = "^1.11.2"
 pydantic = "^2.9.2"
 pyomo = "^6.8.0"
 ruff = "^0.6.9"
+highspy = "^1.7.2"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
@@ -78,4 +79,5 @@ line-length = 120
 
 [tool.mypy]
 enable_error_code = "possibly-undefined"
+disable_error_code = "import-untyped"
 # strict = true

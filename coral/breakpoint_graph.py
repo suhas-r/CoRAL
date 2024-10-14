@@ -111,6 +111,34 @@ class BreakpointGraph:
     endnodes: dict[tuple[int, int, int], list[list]] = field(default_factory=dict)
     max_cn: float = 0.0
 
+    @property
+    def num_nodes(self) -> int:
+        return len(self.nodes)
+    
+    @property
+    def num_edges(self) -> int:
+        return self.num_seq_edges + self.num_conc_edges + self.num_disc_edges + 2 * self.num_src_edges + 2 * len(self.endnodes)
+    
+    @property
+    def num_seq_edges(self) -> int:
+        return len(self.sequence_edges)
+    
+    @property
+    def num_conc_edges(self) -> int:
+        return len(self.concordant_edges)
+    
+    @property
+    def num_disc_edges(self) -> int:
+        return len(self.discordant_edges)
+    
+    @property
+    def num_src_edges(self) -> int:
+        return len(self.source_edges)
+    
+    @property
+    def num_nonsrc_edges(self) -> int:
+        return self.num_seq_edges + self.num_conc_edges + self.num_disc_edges
+
     def add_node(self, node_):
         """Add a new node to the breakpoint graph.
 

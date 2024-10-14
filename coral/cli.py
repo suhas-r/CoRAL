@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+import enum
 import logging
 import pickle
 
@@ -8,6 +9,17 @@ import click
 from coral import cycle2bed, cycle_decomposition, cycle_decomposition_old, hsr, infer_breakpoint_graph, plot_amplicons
 from coral.cnv_seed import run_seeding
 from coral.constants import CNGAP_MAX, CNSIZE_MIN, GAIN
+
+class Solver(enum.Enum):
+    # HIGHS = "highs"
+    # IPOPT = "ipopt"
+    # GLPK = "glpk"
+    GUROBI = "gurobi"
+    SCIP = "scip"
+    # Coin-OR solvers
+    BONMIN = "bonmin"
+    COUENNE = "couenne"
+    CLP = "clp"
 
 
 @click.group(help="Long-read amplicon reconstruction pipeline and associated utilities.")
@@ -110,6 +122,7 @@ def seed(ctx: click.Context, cn_seg: str, out: str, gain: float, min_seed_size: 
     help="Postprocess the cycles/paths returned in greedy cycle extraction.",
 )
 @click.option("--log-file", type=str, default="", help="Name of log file.")
+@click.option("--solver", type=click.Choice([solver.value for solver in Solver]), default=Solver.GUROBI.value)
 @click.pass_context
 def reconstruct(
     ctx: click.Context,
@@ -126,13 +139,14 @@ def reconstruct(
     cycle_decomp_threads: int,
     postprocess_greedy_sol: bool,
     log_file: str,
+    solver: str
 ) -> None:
     print(f"Performing reconstruction with options: {ctx.params}")
     logging.basicConfig(
         filename=f"{output_prefix}/infer_breakpoint_graph.log" or "infer_breakpoint_graph.log",
         filemode="w",
         level=logging.DEBUG,
-        format="%(asctime)s:%(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
+        format="%(asctime)s:%(levelname)-4s [%(filename)s:%(lineno)d] %(message)s",
     )
     b2bn = infer_breakpoint_graph.reconstruct_graph(
         lr_bam,
@@ -150,7 +164,7 @@ def reconstruct(
         log_file,
     )
     if not (output_bp or skip_cycle_decomp):
-        cycle_decomposition.reconstruct_cycles(
+        cycle_decomposition_old.reconstruct_cycles(
             output_prefix,
             output_all_path_constraints,
             cycle_decomp_alpha,
@@ -159,6 +173,16 @@ def reconstruct(
             postprocess_greedy_sol,
             b2bn,
         )
+        # cycle_decomposition.reconstruct_cycles(
+        #     output_prefix,
+        #     output_all_path_constraints,
+        #     cycle_decomp_alpha,
+        #     cycle_decomp_time_limit,
+        #     cycle_decomp_threads,
+        #     solver,
+        #     postprocess_greedy_sol,
+        #     b2bn,
+        # )
     b2bn.closebam()
     print("\nCompleted reconstruction.")
 
@@ -185,6 +209,7 @@ def reconstruct(
 )
 @click.option("--cycle-decomp-threads", type=int, help="Number of threads reserved for integer program solvers.")
 @click.option("--bp-graph", type=click.File("rb"), help="Existing BP graph file.")
+@click.option("--solver", type=click.Choice([solver.value for solver in Solver]), default=Solver.GUROBI.value)
 @click.option("--old", is_flag=True, default=False, help="Use old cycle decomposition method.")
 def cycle_decomposition_mode(
     output_prefix: str,
@@ -193,11 +218,11 @@ def cycle_decomposition_mode(
     cycle_decomp_time_limit: int,
     cycle_decomp_threads: int,
     bp_graph: click.File,
+    solver: str,
     old: bool,
 ):
     module = cycle_decomposition_old if old else cycle_decomposition
     bb = infer_breakpoint_graph.BamToBreakpointNanopore(None, [pickle.load(bp_graph)])
-    # bb.read_cns(cns_seg)
 
     module.reconstruct_cycles(
         output_prefix,
@@ -205,6 +230,7 @@ def cycle_decomposition_mode(
         cycle_decomp_alpha,
         cycle_decomp_time_limit,
         cycle_decomp_threads,
+        solver,
         postprocess_greedy_sol=False,
         bb=bb,
     )
