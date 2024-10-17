@@ -25,11 +25,11 @@ import pyomo.contrib.appsi
 from coral import constants, infer_breakpoint_graph, models, state_provider
 from coral.breakpoint_graph import BreakpointGraph
 from coral.constants import CHR_TAG_TO_IDX
-from coral.models import output, utils
+from coral.models import datatypes, output, utils
+from coral.models.concrete import CycleLPModel
 from coral.path_constraints import longest_path_dict
 
 logger = logging.getLogger(__name__)
-
 
 
 def minimize_cycles(
@@ -43,7 +43,7 @@ def minimize_cycles(
     p_bp_cn=0.9,
     num_threads=-1,
     time_limit=7200,
-    model_prefix="",
+    model_prefix="pyomo",
     solver_to_use="gurobi",
 ):
     """Cycle decomposition by minimizing the number of cycles/paths
@@ -76,13 +76,14 @@ def minimize_cycles(
     """
     logger.debug(f"Regular cycle decomposition with at most {k} cycles/paths allowed.")
 
-    model = models.concrete.get_minimize_cycle_model(
+    model = models.concrete.get_model(
         bp_graph,
         k,
         total_weights,
         node_order,
         pc_list,
-        model_name=f"{model_prefix}/amplicon_{amplicon_id}_cycle_decomposition_{k=}")
+        model_name=f"{model_prefix}/amplicon_{amplicon_id}_cycle_decomposition_{k=}",
+    )
 
     model_name = f"{model_prefix}/amplicon_{amplicon_id}_model"
     model.write(f"{model_name}.lp", io_options={"symbolic_solver_labels": True})
@@ -95,15 +96,13 @@ def minimize_cycles(
     )
     results: pyomo.opt.SolverResults = solver.solve(model, tee=True)
 
-    logger.debug(f"Completed optimization with status {results.solver.status}, condition {results.solver.termination_condition}.")
+    logger.debug(
+        f"Completed optimization with status {results.solver.status}, condition {results.solver.termination_condition}."
+    )
     if results.solver.termination_condition == pyo.TerminationCondition.infeasible:
         pyomo.util.infeasible.log_infeasible_constraints(model, log_expression=True, log_variables=True)
 
-    parsed_sol = utils.parse_lp_solution(model, bp_graph, k, pc_list)
-    logger.debug(f"Total length weighted CN from cycles/paths = {parsed_sol.total_weights_included}/{total_weights}.")
-    logger.debug(
-        f"Total num subpath constraints satisfied = {len(parsed_sol.path_constraints_satisfied_set)}/{len(pc_list)}."
-    )
+    parsed_sol = utils.parse_lp_solution(model, bp_graph, k, pc_list, total_weights)
     return (
         results.solver.status,
         parsed_sol.total_weights_included,  # TODO: just return parsed sol
@@ -113,18 +112,20 @@ def minimize_cycles(
         parsed_sol.path_constraints_satisfied,
     )
 
+
 def minimize_cycles_post(
     amplicon_id: int,
-    g: BreakpointGraph,
+    bp_graph: BreakpointGraph,
     total_weights: float,
     node_order: Dict[tuple[Any, Any, Any], int],
     pc_list,
-    init_sol,
+    init_sol: datatypes.InitialSolution,
     p_total_weight=0.9,
     resolution=0.1,
     num_threads=-1,
     time_limit=7200,
-    model_prefix="",
+    model_prefix="pyomo",
+    solver_to_use="gurobi",
 ):
     """Cycle decomposition by postprocessing the greedy solution
 
@@ -152,11 +153,11 @@ def minimize_cycles_post(
     """
     logger.debug("Cycle decomposition with initial solution from the greedy strategy.")
 
-    k = len(init_sol[0][0]) + len(init_sol[0][1])
+    k = len(init_sol.cycles[0]) + len(init_sol.cycles[1])
     logger.debug(f"Reset k (num cycles) to {k}.")
     p_path_constraints = 0.0
     path_constraint_indices_ = []
-    for paths in init_sol[2][0] + init_sol[2][1]:
+    for paths in init_sol.satisfied_path_constraints[0] + init_sol.satisfied_path_constraints[1]:
         for pathi in paths:
             if pathi not in path_constraint_indices_:
                 path_constraint_indices_.append(pathi)
@@ -166,76 +167,140 @@ def minimize_cycles_post(
     else:
         logger.debug("Proceed without subpath constraints.")
 
-
     model_name = f"{model_prefix}/amplicon_{amplicon_id}_cycle_decomposition_postprocessing_{k=}"
+    model = models.concrete.get_model(
+        bp_graph, k, total_weights, node_order, pc_list, model_name=model_name, is_post=True
+    )
 
-def initialize_post_processing_solver(
-    model: pyo.ConcreteModel,
-    bp_graph: BreakpointGraph,
-    init_sol
-):
-    """
-        bp_graph: breakpoint graph (object)
-        init_sol: initial solution returned by maximize_weights_greedy
-    """
+    initialize_post_processing_solver(model, init_sol)
+    model.write(f"{model_name}.lp", io_options={"symbolic_solver_labels": True})
 
-    for i in range(len(init_sol[0][0])):
-        z[i].start = 1
-        w[i].start = init_sol[1][0][i]
-        for v, vi in init_sol[0][0][i].keys():
+    logger.debug(f"Completed model setup, wrote to {model_name}.lp.")
+    solver = utils.get_solver(
+        solver_name=solver_to_use,
+        num_threads=num_threads,
+        time_limit_s=max(time_limit, bp_graph.num_disc_edges * 300),  # each breakpoint edge is assigned 5 minutes
+    )
+    results: pyomo.opt.SolverResults = solver.solve(model, tee=True)
+
+
+def initialize_post_processing_solver(model: CycleLPModel, init_sol: datatypes.InitialSolution) -> None:
+    """
+    bp_graph: breakpoint graph (object)
+    init_sol: initial solution returned by maximize_weights_greedy
+    """
+    # TODO: fix post initialization from Pyomo rather than Guorbi
+    for i in range(len(init_sol.cycles[0])):
+        model.z[i] = 1
+        model.w[i] = init_sol.cycle_weights[0][i]
+        for var_name, var_idx in init_sol.cycles[0][i]:
+            if var_name == "x":
+                model.x[var_idx, i] = init_sol.cycles[0][i][(var_name, var_idx)]
+            elif var_name == "c":
+                model.c[var_idx, i] = init_sol.cycles[0][i][(var_name, var_idx)]
+            elif var_name == "d":
+                model.d[var_idx, i] = init_sol.cycles[0][i][(var_name, var_idx)]
+            elif var_name == "y1":
+                model.y1[var_idx, i] = init_sol.cycles[0][i][(var_name, var_idx)]
+            elif var_name == "y2":
+                model.y2[var_idx, i] = init_sol.cycles[0][i][(var_name, var_idx)]
+    for i in range(len(init_sol.cycles[1])):
+        i_ = i + len(init_sol.cycles[0])
+        model.z[i_] = 1
+        model.w[i_] = init_sol.cycle_weights[1][i]
+        for v, vi in init_sol.cycles[1][i].keys():
             if v == "x":
-                x[vi * k + i].start = init_sol[0][0][i][(v, vi)]
+                model.x[vi, i_] = init_sol.cycles[1][i][(v, vi)]
             elif v == "c":
-                c[vi * k + i].start = init_sol[0][0][i][(v, vi)]
+                model.c[vi, i_] = init_sol.cycles[1][i][(v, vi)]
             elif v == "d":
-                d[vi * k + i].start = init_sol[0][0][i][(v, vi)]
+                model.d[vi, i_] = init_sol.cycles[1][i][(v, vi)]
             elif v == "y1":
-                y1[vi * k + i].start = init_sol[0][0][i][(v, vi)]
+                model.y1[vi, i_] = init_sol.cycles[1][i][(v, vi)]
             elif v == "y2":
-                y2[vi * k + i].start = init_sol[0][0][i][(v, vi)]
-    for i in range(len(init_sol[0][1])):
-        i_ = i + len(init_sol[0][0])
-        z[i_].start = 1
-        w[i_].start = init_sol[1][1][i]
-        for v, vi in init_sol[0][1][i].keys():
-            if v == "x":
-                x[vi * k + i_].start = init_sol[0][1][i][(v, vi)]
-            elif v == "c":
-                c[vi * k + i_].start = init_sol[0][1][i][(v, vi)]
-            elif v == "d":
-                d[vi * k + i_].start = init_sol[0][1][i][(v, vi)]
-            elif v == "y1":
-                y1[vi * k + i_].start = init_sol[0][1][i][(v, vi)]
-            elif v == "y2":
-                y2[vi * k + i_].start = init_sol[0][1][i][(v, vi)]
-    for i in range(len(init_sol[2][0])):
-        for pi in init_sol[2][0][i]:
-            r[pi * k + i].start = 1
-            R[pi].start = 1
-    for i in range(len(init_sol[2][1])):
-        i_ = i + len(init_sol[2][0])
-        for pi in init_sol[2][1][i]:
-            r[pi * k + i_].start = 1
-            R[pi].start = 1
+                model.y2[vi, i_] = init_sol.cycles[1][i][(v, vi)]
+    for i in range(len(init_sol.satisfied_path_constraints[0])):
+        for pi in init_sol.satisfied_path_constraints[0][i]:
+            model.r[pi, i] = 1
+            model.R[pi] = 1
+    for i in range(len(init_sol.satisfied_path_constraints[1])):
+        i_ = i + len(init_sol.satisfied_path_constraints[0])
+        for pi in init_sol.satisfied_path_constraints[1][i]:
+            model.r[pi, i_] = 1
+            model.R[pi] = 1
+
 
 def maximize_weights_greedy(
     amplicon_id: int,
-    g: BreakpointGraph,
+    bp_graph: BreakpointGraph,
     total_weights: float,
     node_order: Dict[tuple[Any, Any, Any], int],
-    pc_list,
-    alpha=0.01,
-    p_total_weight=0.9,
-    resolution=0.1,
-    cn_tol=0.005,
-    p_subpaths=0.9,
-    num_threads=-1,
-    postprocess=0,
-    time_limit=7200,
-    model_prefix=""
-)
+    pc_list: List,
+    cycle_id: int,
+    alpha: float=0.01,
+    p_total_weight: float=0.9,
+    resolution: float=0.1,
+    cn_tol: float=0.005,
+    p_subpaths: float=0.9,
+    num_threads: int =-1,
+    postprocess: int=0,
+    time_limit: int =7200,
+    model_prefix="pyomo",
+    solver_to_use="gurobi",
+):
+    # Essentially can consider base model with k = 1
 
-    
+    remaining_weights = total_weights
+    unsatisfied_pc = [i for i in range(len(pc_list))]
+    discordant_multiplicities = bp_graph.infer_discordant_edge_multiplicities()
+    remaining_cn = datatypes.EdgeToCN.from_graph(bp_graph)
+    next_w = resolution * 1.1
+    cycle_id = 0
+    num_unsatisfied_pc = len(pc_list)
+    cycles = [[], []]  # cycles, paths
+    cycle_weights = [[], []]  # cycles, paths
+    path_constraints_satisfied = [[], []]  # cycles, paths
+
+    logger.debug(
+        f"Greedy cycle decomposition with length weighted CN = {remaining_weights} and num subpath constraints = {num_unsatisfied_pc}."
+    )
+
+    while next_w >= resolution and (
+        remaining_weights > (1.0 - p_total_weight) * total_weights
+        or num_unsatisfied_pc > math.floor((1.0 - p_subpaths) * len(pc_list))
+    ):
+        pp = 1.0
+        if alpha > 0 and num_unsatisfied_pc > 0:
+            pp = alpha * remaining_weights / num_unsatisfied_pc  # multi - objective optimization parameter
+        logger.debug(
+            f"Iteration {cycle_id + 1} with remaining CN = {remaining_weights} and num subpath constraints = {num_unsatisfied_pc}/{len(pc_list)}."
+        )
+        logger.debug(f"Multiplication factor for subpath contstraints = {pp}.")
+        model_name = f"{model_prefix}/amplicon_{amplicon_id}_cycle_decomposition_greedy_{cycle_id + 1}_{alpha=}"
+
+        model = models.concrete.get_model(
+            bp_graph,
+            k=1,
+            total_weights=total_weights,
+            node_order=node_order,
+            pc_list=pc_list,
+            model_name=model_name,
+            is_greedy=True,
+            pp=pp,
+            unsatisfied_pc=unsatisfied_pc,
+            remaining_cn=remaining_cn,
+        )
+        model.write(f"{model_name}.lp", io_options={"symbolic_solver_labels": True})
+        logger.debug(f"Completed model setup, wrote to {model_name}.lp.")
+
+        solver = utils.get_solver(
+            solver_name=solver_to_use,
+            num_threads=num_threads,
+            time_limit_s=max(time_limit, bp_graph.num_disc_edges * 300),  # each breakpoint edge is assigned 5 minutes
+        )
+        results: pyomo.opt.SolverResults = solver.solve(model, tee=True)
+
+
 def cycle_decomposition(
     bb: infer_breakpoint_graph.BamToBreakpointNanopore,
     alpha: float = 0.01,
@@ -244,7 +309,7 @@ def cycle_decomposition(
     num_threads: int = -1,
     postprocess: int = 0,
     time_limit: int = 7200,
-    model_prefix: str = "",
+    model_prefix: str = "pyomo",
     solver_to_use: str = "gurobi",
 ):
     """Caller for cycle decomposition functions"""
@@ -265,8 +330,9 @@ def cycle_decomposition(
             bb.path_constraints[amplicon_idx],
         )
         logger.info(f"Total num maximal subpath constraints = {len(bb.longest_path_constraints[amplicon_idx][0])}.")
+        print(f"Solving {amplicon_idx}")
         for pathi in bb.longest_path_constraints[amplicon_idx][1]:
-            logger.debug(f"Subpath constraint {pathi} = {bb.longest_path_constraints[amplicon_idx][0][pathi]}")
+            logger.debug(f"Subpath constraint {pathi} = {bb.path_constraints[amplicon_idx][0][pathi]}")
 
 
         k = max(10, ld // 2)  # Initial num cycles/paths
@@ -295,20 +361,21 @@ def cycle_decomposition(
                     cycle_weights_init,
                     path_constraints_satisfied_init,
                 ) = maximize_weights_greedy(
-                    amplicon_idx + 1,
-                    bb.lr_graph[amplicon_idx],
-                    total_weights,
-                    node_order,
-                    bb.longest_path_constraints[amplicon_idx][0],
-                    alpha,
-                    p_total_weight,
-                    resolution,
-                    0.005,
-                    0.9,
-                    num_threads,
-                    postprocess,
-                    time_limit,
-                    model_prefix,
+                    amplicon_id=amplicon_idx + 1,
+                    bp_graph=bb.lr_graph[amplicon_idx],
+                    total_weights=total_weights,
+                    node_order=node_order,
+                    pc_list=bb.longest_path_constraints[amplicon_idx][0],
+                    cycle_id=0, # TODO: FIX!
+                    alpha=alpha,
+                    p_total_weight=p_total_weight,
+                    resolution=resolution,
+                    cn_tol=0.005,
+                    p_subpaths=0.9,
+                    num_threads=num_threads,
+                    postprocess=postprocess,
+                    time_limit=time_limit,
+                    model_prefix=model_prefix,
                 )
                 logger.info("Completed greedy cycle decomposition.")
                 logger.info(f"Num cycles = {len(cycles_init[0])}; num paths = {len(cycles_init[1])}.")
@@ -330,7 +397,7 @@ def cycle_decomposition(
                         total_weights,
                         node_order,
                         bb.longest_path_constraints[amplicon_idx][0],
-                        [cycles_init, cycle_weights_init, path_constraints_satisfied_init],
+                        datatypes.InitialSolution(cycles_init, cycle_weights_init, path_constraints_satisfied_init),
                         min(total_cycle_weights_init / total_weights * 0.9999, p_total_weight),
                         resolution,
                         num_threads,
@@ -400,20 +467,21 @@ def cycle_decomposition(
                 cycle_weights_init,
                 path_constraints_satisfied_init,
             ) = maximize_weights_greedy(
-                amplicon_idx + 1,
-                bb.lr_graph[amplicon_idx],
-                total_weights,
-                node_order,
-                bb.longest_path_constraints[amplicon_idx][0],
-                alpha,
-                p_total_weight,
-                resolution,
-                0.005,
-                0.9,
-                num_threads,
-                postprocess,
-                time_limit,
-                model_prefix,
+                amplicon_id=amplicon_idx + 1,
+                bp_graph=bb.lr_graph[amplicon_idx],
+                total_weights=total_weights,
+                node_order=node_order,
+                pc_list=bb.longest_path_constraints[amplicon_idx][0],
+                cycle_id=0, # TODO: FIX!
+                alpha=alpha,
+                p_total_weight=p_total_weight,
+                resolution=resolution,
+                cn_tol=0.005,
+                p_subpaths=0.9,
+                num_threads=num_threads,
+                postprocess=postprocess,
+                time_limit=time_limit,
+                model_prefix=model_prefix,
             )
             logger.info(
                 "Completed greedy cycle decomposition.",
@@ -470,8 +538,6 @@ def cycle_decomposition(
                 bb.cycles[amplicon_idx] = cycles_init
                 bb.cycle_weights[amplicon_idx] = cycle_weights_init
                 bb.path_constraints_satisfied[amplicon_idx] = path_constraints_satisfied_init
-
-
 
 
 def reconstruct_cycles(

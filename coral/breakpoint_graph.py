@@ -98,7 +98,7 @@ class BreakpointGraph:
     """A container object for the breakpoint graphs."""
 
     amplicon_intervals: list[types.AmpliconInterval] = field(default_factory=list)
-    sequence_edges: list[dict[int, str | int]] = field(default_factory=list)
+    sequence_edges: list[list] = field(default_factory=list)
     concordant_edges: list[list[tuple[int, int]]] = field(default_factory=list)
     discordant_edges: list[dict[int, str | int]] = field(default_factory=list)
     source_edges: list[dict[int, str | int]] = field(default_factory=list)
@@ -114,27 +114,33 @@ class BreakpointGraph:
     @property
     def num_nodes(self) -> int:
         return len(self.nodes)
-    
+
     @property
     def num_edges(self) -> int:
-        return self.num_seq_edges + self.num_conc_edges + self.num_disc_edges + 2 * self.num_src_edges + 2 * len(self.endnodes)
-    
+        return (
+            self.num_seq_edges
+            + self.num_conc_edges
+            + self.num_disc_edges
+            + 2 * self.num_src_edges
+            + 2 * len(self.endnodes)
+        )
+
     @property
     def num_seq_edges(self) -> int:
         return len(self.sequence_edges)
-    
+
     @property
     def num_conc_edges(self) -> int:
         return len(self.concordant_edges)
-    
+
     @property
     def num_disc_edges(self) -> int:
         return len(self.discordant_edges)
-    
+
     @property
     def num_src_edges(self) -> int:
         return len(self.source_edges)
-    
+
     @property
     def num_nonsrc_edges(self) -> int:
         return self.num_seq_edges + self.num_conc_edges + self.num_disc_edges

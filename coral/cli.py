@@ -10,6 +10,7 @@ from coral import cycle2bed, cycle_decomposition, cycle_decomposition_old, hsr, 
 from coral.cnv_seed import run_seeding
 from coral.constants import CNGAP_MAX, CNSIZE_MIN, GAIN
 
+
 class Solver(enum.Enum):
     # HIGHS = "highs"
     # IPOPT = "ipopt"
@@ -139,7 +140,7 @@ def reconstruct(
     cycle_decomp_threads: int,
     postprocess_greedy_sol: bool,
     log_file: str,
-    solver: str
+    solver: str,
 ) -> None:
     print(f"Performing reconstruction with options: {ctx.params}")
     logging.basicConfig(
@@ -164,25 +165,25 @@ def reconstruct(
         log_file,
     )
     if not (output_bp or skip_cycle_decomp):
-        cycle_decomposition_old.reconstruct_cycles(
-            output_prefix,
-            output_all_path_constraints,
-            cycle_decomp_alpha,
-            cycle_decomp_time_limit,
-            cycle_decomp_threads,
-            postprocess_greedy_sol,
-            b2bn,
-        )
-        # cycle_decomposition.reconstruct_cycles(
+        # cycle_decomposition_old.reconstruct_cycles(
         #     output_prefix,
         #     output_all_path_constraints,
         #     cycle_decomp_alpha,
         #     cycle_decomp_time_limit,
         #     cycle_decomp_threads,
-        #     solver,
         #     postprocess_greedy_sol,
         #     b2bn,
         # )
+        cycle_decomposition.reconstruct_cycles(
+            output_prefix,
+            output_all_path_constraints,
+            cycle_decomp_alpha,
+            cycle_decomp_time_limit,
+            cycle_decomp_threads,
+            solver,
+            postprocess_greedy_sol,
+            b2bn,
+        )
     b2bn.closebam()
     print("\nCompleted reconstruction.")
 

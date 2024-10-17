@@ -378,7 +378,9 @@ class BamToBreakpointNanopore:
                         )
             for connection in connection_map:
                 if connection != connection_map[connection]:
-                    logger.debug(f"Reset connection between amplicon intervals {connection} to {connection_map[connection]}.")
+                    logger.debug(
+                        f"Reset connection between amplicon intervals {connection} to {connection_map[connection]}."
+                    )
                     if connection_map[connection] not in self.amplicon_interval_connections:
                         self.amplicon_interval_connections[connection_map[connection]] = (
                             self.amplicon_interval_connections[connection]
@@ -582,7 +584,7 @@ class BamToBreakpointNanopore:
                             num_subcluster = 0
                             while len(bp_cluster_r) >= self.min_cluster_cutoff:
                                 logger.debug(f"\t\t\t\tSubcluster {num_subcluster}")
-                                num_subcluster += 1 # TODO: this isn't in old code? just a pointless variable?
+                                num_subcluster += 1  # TODO: this isn't in old code? just a pointless variable?
                                 bp, bpr, bp_stats_, bp_cluster_r = bpc2bp(
                                     bp_cluster_r,
                                     self.min_bp_match_cutoff_,
@@ -1994,13 +1996,15 @@ def reconstruct_graph(
     for interval in seed_intervals:
         logger.debug(f"Seed interval: {interval[:3]}")
 
-    b2bn = BamToBreakpointNanopore(lr_bamfh=pysam.AlignmentFile(lr_bam_filename, "rb"), amplicon_intervals=seed_intervals)
+    b2bn = BamToBreakpointNanopore(
+        lr_bamfh=pysam.AlignmentFile(lr_bam_filename, "rb"), amplicon_intervals=seed_intervals
+    )
     # if filter_bp_by_edit_distance:
     # b2bn.nm_filter = True
     b2bn.min_bp_cov_factor = min_bp_support
     logger.info("Opened LR bam files.")
 
-    b2bn.read_cns(cn_seg_file) # type: ignore[arg-type] # click.File is passed as IO stream
+    b2bn.read_cns(cn_seg_file)  # type: ignore[arg-type] # click.File is passed as IO stream
     logger.info("Completed parsing CN segment files.")
     b2bn.fetch()
     logger.info("Completed fetching reads containing breakpoints.")
